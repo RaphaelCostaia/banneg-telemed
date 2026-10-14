@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Banneg Telemedicina — Contratação</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { background: #eef2f7; }
+  .co-wrap { max-width: 520px; margin: 0 auto; padding: 0 0 40px; }
+  .co-head { background: linear-gradient(135deg, var(--brand-d), var(--brand)); color: #fff; padding: 26px 20px 22px; text-align: center; }
+  .co-head .logo { font-weight: 800; font-size: 22px; letter-spacing: .3px; }
+  .co-head .sub { opacity: .9; font-size: 14px; margin-top: 4px; }
+  .co-card { background: #fff; margin: 14px; border-radius: 16px; border: 1px solid var(--line); padding: 18px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
+  .co-card h3 { margin: 0 0 12px; font-size: 15px; }
+  .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .opt { border: 2px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; cursor: pointer; background: #fff; }
+  .opt.sel { border-color: var(--brand); background: #f0fdfa; }
+  .opt .n { font-weight: 800; }
+  .opt .p { color: var(--brand-d); font-weight: 800; font-size: 18px; margin-top: 2px; }
+  .opt .s { font-size: 11px; color: var(--muted); }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  label { font-size: 13px; font-weight: 600; color: #334155; }
+  input, select { padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-family: inherit; background: #fff; }
+  input:focus, select:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
+  .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 4px; border-top: 1px dashed var(--line); margin-top: 6px; }
+  .total .v { font-size: 26px; font-weight: 800; color: var(--brand-d); }
+  .total .d { font-size: 12px; color: var(--muted); }
+  .consent { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: #475569; margin: 6px 2px 0; }
+  .consent input { width: auto; margin-top: 2px; }
+  .cta { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
+  .cta:disabled { opacity: .6; }
+  .dep { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--soft); }
+  .dep .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
+  .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; }
+  .erro { background: #fee2e2; color: #b91c1c; padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 0 14px 12px; display: none; }
+  .pixbox { background: #f8fafc; border: 1px dashed var(--line); border-radius: 10px; padding: 12px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 12px; }
+  .muted { color: var(--muted); }
+  .center { text-align: center; }
+</style>
+</head>
+<body>
+<div class="co-wrap">
+  <div class="co-head">
+    <div class="logo">Banneg Telemedicina</div>
+    <div class="sub">Atendimento médico 24h • sem carência • para toda a família</div>
+  </div>
+
+  <div class="erro" id="erro"></div>
+
+  <form id="form" onsubmit="return false">
+    <div class="co-card">
+      <h3>Escolha o plano</h3>
+      <div class="pick" id="planos"></div>
+    </div>
+
+    <div class="co-card">
+      <h3>Forma de pagamento</h3>
+      <div class="pick" id="formas">
+        <div class="opt" data-forma="CREDIT_CARD" onclick="selForma('CREDIT_CARD')"><div class="n">💳 Cartão</div><div class="s">recorrente mensal</div></div>
+        <div class="opt" data-forma="PIX" onclick="selForma('PIX')"><div class="n">⚡ Pix</div><div class="s">copia e cola</div></div>
+      </div>
+    </div>
+
+    <div class="co-card">
+      <h3>Seus dados</h3>
+      <div class="field"><label>Nome completo</label><input id="t_nome" placeholder="Nome e sobrenome" /></div>
+      <div class="row2">
+        <div class="field"><label>CPF</label><input id="t_cpf" inputmode="numeric" placeholder="000.000.000-00" /></div>
+        <div class="field"><label>Nascimento</label><input id="t_nasc" type="date" /></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Sexo</label><select id="t_sexo"></select></div>
+        <div class="field"><label>Estado civil</label><select id="t_estciv"></select></div>
+      </div>
+      <div class="field"><label>Nome da mãe</label><input id="t_mae" placeholder="Nome completo da mãe" /></div>
+      <div class="field"><label>E-mail</label><input id="t_email" type="email" placeholder="voce@email.com" /></div>
+      <div class="field"><label>Celular (WhatsApp)</label>
+        <div class="row2"><input id="t_ddd" inputmode="numeric" placeholder="DDD" /><input id="t_tel" inputmode="numeric" placeholder="Número" /></div>
+      </div>
+    </div>
+
+    <div class="co-card" id="boxDeps" hidden>
+      <h3>Dependentes <span class="muted" id="depInfo" style="font-weight:400;font-size:12px"></span></h3>
+      <div id="deps"></div>
+      <button class="linkbtn" type="button" id="addDep" style="margin-top:10px">+ Adicionar dependente</button>
+    </div>
+
+    <div class="co-card">
+      <div class="total"><div><div style="font-weight:700">Total mensal</div><div class="d" id="totalDet"></div></div><div class="v" id="total">R$ 0,00</div></div>
+      <label class="consent"><input type="checkbox" id="consent" /> Autorizo o uso dos meus dados para a contratação da Telemedicina Medicar e concordo com a cobrança mensal recorrente.</label>
+      <button class="cta" id="submit" type="button" style="margin-top:14px">Finalizar e gerar pagamento</button>
+      <p class="center muted" style="font-size:12px;margin:10px 2px 0">🔒 Seus dados são usados apenas para a contratação. Pagamento processado pelo Asaas.</p>
+    </div>
+  </form>
+</div>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+
+<script>
+const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const qs = new URLSearchParams(location.search);
+let META = {}, planoSel = null, forma = "CREDIT_CARD", deps = [];
+const val = (id) => document.getElementById(id).value.trim();
+
+async function init() {
+  META = await (await fetch("/api/checkout/meta")).json();
+  fill("t_sexo", META.sexos, true);
+  fill("t_estciv", META.estadosCivis, true);
+
+  document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
+    `<div class="opt" data-id="${p.id}" onclick="selPlano('${p.id}')">
+       <div class="n">${p.nome}</div><div class="p">${BRL(p.preco.CREDIT_CARD)}</div>
+       <div class="s">cartão · Pix ${BRL(p.preco.PIX)}</div></div>`).join("");
+
+  const fQ = (qs.get("forma") || "").toUpperCase();
+  forma = fQ === "PIX" ? "PIX" : "CREDIT_CARD";
+  selForma(forma);
+  const pQ = qs.get("plano");
+  selPlano(META.planos[pQ] ? pQ : "individual");
+
+  document.getElementById("addDep").onclick = addDep;
+  document.getElementById("submit").onclick = enviar;
+}
+function fill(id, map, blank) {
+  document.getElementById(id).innerHTML = (blank ? `<option value="">—</option>` : "") +
+    Object.entries(map).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+}
+function selForma(f) {
+  forma = f;
+  document.querySelectorAll("#formas .opt").forEach(e => e.classList.toggle("sel", e.dataset.forma === f));
+  total();
+}
+function selPlano(id) {
+  planoSel = META.planos[id];
+  document.querySelectorAll("#planos .opt").forEach(e => e.classList.toggle("sel", e.dataset.id === id));
+  document.getElementById("boxDeps").hidden = planoSel.maxDependentes === 0;
+  if (deps.length > planoSel.maxDependentes) deps = deps.slice(0, planoSel.maxDependentes);
+  renderDeps();
+  total();
+}
+function addDep() {
+  if (deps.length >= planoSel.maxDependentes) { alert(`Este plano permite até ${planoSel.maxDependentes} dependente(s).`); return; }
+  deps.push({ nome: "", cpf: "", nascimento: "", sexo: "", grau: "05", mae: "" });
+  renderDeps();
+}
+function rmDep(i) { deps.splice(i, 1); renderDeps(); }
+function renderDeps() {
+  document.getElementById("depInfo").textContent = `(${deps.length}/${planoSel.maxDependentes})`;
+  document.getElementById("addDep").disabled = deps.length >= planoSel.maxDependentes;
+  const grau = Object.entries(META.graus).filter(([k]) => k !== "00").map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  const sexo = `<option value="">—</option>` + Object.entries(META.sexos).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
+  document.getElementById("deps").innerHTML = deps.map((d, i) => `
+    <div class="dep">
+      <div class="h">Dependente ${i + 1} <button class="linkbtn" type="button" onclick="rmDep(${i})">remover</button></div>
+      <div class="field"><label>Nome completo</label><input value="${d.nome}" oninput="deps[${i}].nome=this.value" /></div>
+      <div class="row2">
+        <div class="field"><label>Parentesco</label><select onchange="deps[${i}].grau=this.value">${grau}</select></div>
+        <div class="field"><label>Nascimento</label><input type="date" value="${d.nascimento}" oninput="deps[${i}].nascimento=this.value" /></div>
+      </div>
+      <div class="row2">
+        <div class="field"><label>Sexo</label><select onchange="deps[${i}].sexo=this.value">${sexo}</select></div>
+        <div class="field"><label>CPF (se ≥18)</label><input value="${d.cpf}" oninput="deps[${i}].cpf=this.value" /></div>
+      </div>
+      <div class="field"><label>Nome da mãe</label><input value="${d.mae}" oninput="deps[${i}].mae=this.value" /></div>
+    </div>`).join("");
+  deps.forEach((d, i) => { const c = document.querySelectorAll("#deps .dep")[i]; if (c) { const s = c.querySelectorAll("select"); s[0].value = d.grau || "05"; s[1].value = d.sexo || ""; } });
+  total();
+}
+function calcValor() {
+  if (!planoSel) return null;
+  const base = planoSel.preco?.[forma]; if (base == null) return null;
+  const vidas = 1 + deps.length;
+  if (planoSel.adicionalPorVida && vidas > planoSel.vidasBase) return base + (vidas - planoSel.vidasBase) * planoSel.adicionalPorVida;
+  return base;
+}
+function total() {
+  if (!planoSel) return;
+  const v = calcValor(); const vidas = 1 + deps.length;
+  document.getElementById("total").textContent = v == null ? "—" : BRL(v);
+  document.getElementById("totalDet").textContent = `${vidas} vida${vidas > 1 ? "s" : ""} · ${forma === "PIX" ? "Pix" : "Cartão"}`;
+}
+function erro(msg) { const e = document.getElementById("erro"); e.textContent = msg; e.style.display = "block"; window.scrollTo(0, 0); }
+
+async function enviar() {
+  document.getElementById("erro").style.display = "none";
+  const t = { nome: val("t_nome"), cpf: val("t_cpf"), nascimento: val("t_nasc"), sexo: val("t_sexo"),
+    estciv: val("t_estciv"), mae: val("t_mae"), email: val("t_email"), ddd: val("t_ddd"), telefone: val("t_tel") };
+  if (!t.nome || t.cpf.replace(/\D/g, "").length !== 11) return erro("Confira seu nome e CPF (11 dígitos).");
+  if (!t.nascimento || !t.sexo || !t.estciv || !t.mae) return erro("Preencha nascimento, sexo, estado civil e nome da mãe.");
+  for (const [i, d] of deps.entries()) if (!d.nome || !d.nascimento) return erro(`Preencha nome e nascimento do dependente ${i + 1}.`);
+  if (!document.getElementById("consent").checked) return erro("Marque a autorização para continuar.");
+
+  const btn = document.getElementById("submit");
+  btn.disabled = true; btn.textContent = "Gerando pagamento…";
+  try {
+    const r = await fetch("/api/checkout", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo_plano: planoSel.id, billingType: forma, consentimento: true, titular: t, dependentes: deps }),
+    }).then(r => r.json());
+    if (r.erro) throw new Error(r.erro);
+    sucesso(r);
+  } catch (e) { erro(e.message); btn.disabled = false; btn.textContent = "Finalizar e gerar pagamento"; }
+}
+
+function sucesso(r) {
+  let pag = "";
+  if (forma === "PIX" && r.pixCopiaECola) {
+    pag = `<p><b>Pague com Pix</b> (copia e cola):</p>
+      <div class="pixbox" id="pixcode">${r.pixCopiaECola}</div>
+      <button class="cta" style="margin-top:10px" onclick="copiarPix()">📋 Copiar código Pix</button>
+      ${r.paymentLink ? `<p class="center" style="margin-top:12px"><a href="${r.paymentLink}" target="_blank">ou abrir a página de pagamento</a></p>` : ""}`;
+  } else if (r.paymentLink) {
+    pag = `<a class="cta" style="display:block;text-align:center;text-decoration:none" href="${r.paymentLink}" target="_blank">💳 Pagar agora</a>`;
+  } else {
+    pag = `<p class="muted">O link de pagamento será enviado em instantes.</p>`;
+  }
+  document.getElementById("modalBox").innerHTML = `
+    <h2 style="margin-top:0">✅ Quase lá!</h2>
+    <p>Seu plano <b>${r.plano}</b> — <b>${BRL(r.valor)}/mês</b>.</p>
+    ${pag}
+    <p class="muted" style="font-size:13px;margin-top:14px">Assim que o pagamento for confirmado, seu acesso à Telemedicina é liberado automaticamente e você recebe os dados de acesso. 💙</p>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+function copiarPix() {
+  const code = document.getElementById("pixcode").textContent;
+  navigator.clipboard.writeText(code).then(() => alert("Código Pix copiado! Cole no app do seu banco.")).catch(() => {});
+}
+
+init();
+</script>
+</body>
+</html>

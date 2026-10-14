@@ -25,6 +25,8 @@ seedAdmin();
 const CAMINHOS_PUBLICOS = new Set([
   "/login.html", "/styles.css", "/favicon.ico",
   "/api/login", "/api/logout", "/api/health", "/webhooks/asaas",
+  // autocadastro público (link enviado ao cliente pela IA)
+  "/checkout", "/checkout.html", "/api/checkout", "/api/checkout/meta",
 ]);
 
 app.use((req, res, next) => {
@@ -63,6 +65,9 @@ app.post("/api/logout", (req, res) => {
 });
 
 app.get("/api/me", (req, res) => res.json({ nome: req.usuario.nome, login: req.usuario.login, papel: req.usuario.papel }));
+
+// URL amigável do autocadastro: /checkout -> checkout.html
+app.get("/checkout", (req, res) => res.sendFile(join(publicDir, "checkout.html")));
 
 app.use(express.static(publicDir));
 
@@ -115,154 +120,132 @@ app.get("/api/meta", (req, res) => {
 });
 
 // =====================================================================
-//  Nova venda: cria cliente + assinatura no Asaas e registra localmente
+//  Criação de venda PESSOA FÍSICA (reutilizada pela tela interna e pelo autocadastro)
 // =====================================================================
+const httpErro = (status, msg) => Object.assign(new Error(msg), { status });
+
+async function criarVendaPF(b, vendedorNome) {
+  const plano = getPlano(b.tipo_plano);
+  if (!plano) throw httpErro(400, "Plano inválido.");
+
+  const titular = b.titular || {};
+  if (!titular.nome || !onlyDigits(titular.cpf)) throw httpErro(400, "Informe nome e CPF do titular.");
+
+  const dependentes = Array.isArray(b.dependentes) ? b.dependentes : [];
+  if (dependentes.length > plano.maxDependentes) {
+    throw httpErro(400, `O plano ${plano.nome} permite no máximo ${plano.maxDependentes} dependente(s).`);
+  }
+
+  // Validação de nome (padrão ANS) — reduz rejeição do protocolo na Medicar
+  const errNome = validarNomeANS(titular.nome);
+  if (errNome) throw httpErro(400, `Titular: ${errNome}`);
+  for (const d of dependentes) {
+    const e = validarNomeANS(d.nome);
+    if (e) throw httpErro(400, `Dependente "${d.nome || ""}": ${e}`);
+  }
+
+  // Idempotência por externalId
+  const externalId = (b.externalId || "").toString().trim() || null;
+  if (externalId) {
+    const ex = db.prepare("SELECT * FROM vendas WHERE external_id=?").get(externalId);
+    if (ex) {
+      return { ok: true, jaExistia: true, venda_id: ex.id, externalId,
+        paymentLink: ex.primeira_cobranca_url, valor: ex.valor, status_pagamento: ex.status_pagamento };
+    }
+  }
+
+  const billingType = ["PIX", "CREDIT_CARD"].includes(b.billingType) ? b.billingType : "PIX";
+  const qtdVidas = 1 + dependentes.length;
+  const valor = calcularValor(plano.id, billingType, qtdVidas);
+  if (valor == null) throw httpErro(400, "Não foi possível calcular o valor para este plano/forma de pagamento.");
+
+  const info = db.prepare(
+    `INSERT INTO vendas
+       (tipo_plano, valor, billing_type, titular_nome, titular_cpf, titular_nascimento,
+        titular_sexo, titular_estciv, titular_mae, titular_email, titular_ddd, titular_telefone, vendedor, external_id)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    plano.id, valor, billingType, titular.nome.trim(), onlyDigits(titular.cpf), toYmd(titular.nascimento),
+    titular.sexo || null, titular.estciv || null, titular.mae || null, titular.email || null,
+    onlyDigits(titular.ddd) || null, onlyDigits(titular.telefone) || null, vendedorNome || null, externalId
+  );
+  const vendaId = Number(info.lastInsertRowid);
+
+  const insDep = db.prepare(
+    `INSERT INTO dependentes (venda_id, nome, cpf, nascimento, sexo, estciv, grau_parentesco, mae) VALUES (?,?,?,?,?,?,?,?)`
+  );
+  for (const d of dependentes) {
+    insDep.run(vendaId, (d.nome || "").trim(), onlyDigits(d.cpf) || null, toYmd(d.nascimento),
+      d.sexo || null, d.estciv || null, d.grau || "11", d.mae || null);
+  }
+
+  const mobile = titular.ddd && titular.telefone ? onlyDigits(titular.ddd) + onlyDigits(titular.telefone) : undefined;
+  const customer = await asaas.createCustomer({
+    name: titular.nome.trim(), cpfCnpj: onlyDigits(titular.cpf), email: titular.email,
+    mobilePhone: mobile, externalReference: `venda:${vendaId}`,
+  });
+  const nextDueDate = new Date().toISOString().slice(0, 10);
+  const subscription = await asaas.createSubscription({
+    customer: customer.id, billingType, value: valor, nextDueDate, cycle: "MONTHLY",
+    description: `Banneg Telemedicina - ${plano.nome} (${qtdVidas} vida${qtdVidas > 1 ? "s" : ""})`,
+    externalReference: `venda:${vendaId}`,
+  });
+
+  let invoiceUrl = null, pixCopiaECola = null;
+  try {
+    const pays = await asaas.getSubscriptionPayments(subscription.id);
+    const first = pays?.data?.[0];
+    if (first) {
+      invoiceUrl = first.invoiceUrl || null;
+      upsertCobranca(first, vendaId);
+      if (billingType === "PIX") { try { const qr = await asaas.getPixQrCode(first.id); pixCopiaECola = qr?.payload || null; } catch { /* opcional */ } }
+    }
+  } catch (e) { logEvento("asaas_payments_erro", vendaId, { erro: e.message }); }
+
+  db.prepare(
+    `UPDATE vendas SET asaas_customer_id=?, asaas_subscription_id=?, primeira_cobranca_url=?, updated_at=datetime('now') WHERE id=?`
+  ).run(customer.id, subscription.id, invoiceUrl, vendaId);
+  logEvento("venda_criada", vendaId, { customer: customer.id, subscription: subscription.id, externalId, origem: vendedorNome });
+
+  return { ok: true, venda_id: vendaId, externalId, paymentLink: invoiceUrl, pixCopiaECola, valor,
+    plano: plano.nome, billingType, qtdVidas, customer: customer.id, subscription: subscription.id };
+}
+
+// Tela interna (sessão ou chave de API): PF ou empresa
 app.post("/api/vendas", async (req, res) => {
-  // vendas de empresa (PME) seguem outro fluxo
   if (req.body?.tipo_plano === "empresa" || req.body?.tipo_pessoa === "juridica") {
     return criarVendaEmpresa(req, res);
   }
   try {
-    const b = req.body || {};
-    const plano = getPlano(b.tipo_plano);
-    if (!plano) return res.status(400).json({ erro: "Plano inválido." });
-
-    const titular = b.titular || {};
-    if (!titular.nome || !onlyDigits(titular.cpf)) {
-      return res.status(400).json({ erro: "Informe nome e CPF do titular." });
-    }
-
-    const dependentes = Array.isArray(b.dependentes) ? b.dependentes : [];
-    if (dependentes.length > plano.maxDependentes) {
-      return res.status(400).json({
-        erro: `O plano ${plano.nome} permite no máximo ${plano.maxDependentes} dependente(s).`,
-      });
-    }
-
-    // Validação de nome (padrão ANS) — reduz rejeição do protocolo na Medicar
-    const errNome = validarNomeANS(titular.nome);
-    if (errNome) return res.status(400).json({ erro: `Titular: ${errNome}` });
-    for (const d of dependentes) {
-      const e = validarNomeANS(d.nome);
-      if (e) return res.status(400).json({ erro: `Dependente "${d.nome || ""}": ${e}` });
-    }
-
-    // Idempotência: mesma venda (mesmo externalId do N8N) não é criada duas vezes
-    const externalId = (b.externalId || "").toString().trim() || null;
-    if (externalId) {
-      const ex = db.prepare("SELECT * FROM vendas WHERE external_id=?").get(externalId);
-      if (ex) {
-        return res.json({
-          ok: true, jaExistia: true, venda_id: ex.id, externalId,
-          paymentLink: ex.primeira_cobranca_url, valor: ex.valor, status_pagamento: ex.status_pagamento,
-        });
-      }
-    }
-
-    // Formas aceitas: apenas PIX e cartão de crédito
-    const billingType = ["PIX", "CREDIT_CARD"].includes(b.billingType) ? b.billingType : "PIX";
-
-    // Valor calculado no servidor (nunca confia no cliente): forma de pagamento + nº de vidas
-    const qtdVidas = 1 + dependentes.length;
-    const valor = calcularValor(plano.id, billingType, qtdVidas);
-    if (valor == null) {
-      return res.status(400).json({ erro: "Não foi possível calcular o valor para este plano/forma de pagamento." });
-    }
-
-    // 1) grava a venda (rascunho) para obter o id
-    const info = db
-      .prepare(
-        `INSERT INTO vendas
-         (tipo_plano, valor, billing_type, titular_nome, titular_cpf, titular_nascimento,
-          titular_sexo, titular_estciv, titular_mae, titular_email, titular_ddd, titular_telefone, vendedor, external_id)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      )
-      .run(
-        plano.id,
-        valor,
-        billingType,
-        titular.nome.trim(),
-        onlyDigits(titular.cpf),
-        toYmd(titular.nascimento),
-        titular.sexo || null,
-        titular.estciv || null,
-        titular.mae || null,
-        titular.email || null,
-        onlyDigits(titular.ddd) || null,
-        onlyDigits(titular.telefone) || null,
-        b.vendedor || req.usuario?.nome || null,
-        externalId
-      );
-    const vendaId = Number(info.lastInsertRowid);
-
-    const insDep = db.prepare(
-      `INSERT INTO dependentes (venda_id, nome, cpf, nascimento, sexo, estciv, grau_parentesco, mae)
-       VALUES (?,?,?,?,?,?,?,?)`
-    );
-    for (const d of dependentes) {
-      insDep.run(
-        vendaId,
-        (d.nome || "").trim(),
-        onlyDigits(d.cpf) || null,
-        toYmd(d.nascimento),
-        d.sexo || null,
-        d.estciv || null,
-        d.grau || "11",
-        d.mae || null
-      );
-    }
-
-    // 2) Asaas: cliente + assinatura recorrente
-    const mobile = titular.ddd && titular.telefone ? onlyDigits(titular.ddd) + onlyDigits(titular.telefone) : undefined;
-    const customer = await asaas.createCustomer({
-      name: titular.nome.trim(),
-      cpfCnpj: onlyDigits(titular.cpf),
-      email: titular.email,
-      mobilePhone: mobile,
-      externalReference: `venda:${vendaId}`,
-    });
-
-    const hoje = new Date();
-    const nextDueDate = hoje.toISOString().slice(0, 10); // primeira cobrança hoje
-
-    const subscription = await asaas.createSubscription({
-      customer: customer.id,
-      billingType,
-      value: valor,
-      nextDueDate,
-      cycle: "MONTHLY",
-      description: `Banneg Telemedicina - ${plano.nome} (${qtdVidas} vida${qtdVidas > 1 ? "s" : ""})`,
-      externalReference: `venda:${vendaId}`,
-    });
-
-    // 3) busca a primeira cobrança para pegar o link de pagamento (e o Pix copia-e-cola)
-    let invoiceUrl = null, pixCopiaECola = null;
-    try {
-      const pays = await asaas.getSubscriptionPayments(subscription.id);
-      const first = pays?.data?.[0];
-      if (first) {
-        invoiceUrl = first.invoiceUrl || null;
-        upsertCobranca(first, vendaId);
-        if (billingType === "PIX") {
-          try { const qr = await asaas.getPixQrCode(first.id); pixCopiaECola = qr?.payload || null; } catch { /* opcional */ }
-        }
-      }
-    } catch (e) {
-      logEvento("asaas_payments_erro", vendaId, { erro: e.message });
-    }
-
-    db.prepare(
-      `UPDATE vendas SET asaas_customer_id=?, asaas_subscription_id=?, primeira_cobranca_url=?, updated_at=datetime('now')
-       WHERE id=?`
-    ).run(customer.id, subscription.id, invoiceUrl, vendaId);
-
-    logEvento("venda_criada", vendaId, { customer: customer.id, subscription: subscription.id, externalId });
-
-    res.json({ ok: true, venda_id: vendaId, externalId, paymentLink: invoiceUrl, pixCopiaECola, valor, customer: customer.id, subscription: subscription.id });
+    const r = await criarVendaPF(req.body || {}, req.body?.vendedor || req.usuario?.nome);
+    res.json(r);
   } catch (e) {
-    console.error("Erro ao criar venda:", e);
-    res.status(500).json({ erro: e.message });
+    if (!e.status) console.error("Erro ao criar venda:", e);
+    res.status(e.status || 500).json({ erro: e.message });
   }
+});
+
+// Autocadastro PÚBLICO (o cliente preenche e paga pelo link que a IA envia). Só pessoa física.
+app.post("/api/checkout", async (req, res) => {
+  const b = req.body || {};
+  if (b.tipo_plano === "empresa" || b.tipo_pessoa === "juridica") {
+    return res.status(400).json({ erro: "Autocadastro disponível apenas para planos Individual e Familiar." });
+  }
+  if (!b.consentimento) {
+    return res.status(400).json({ erro: "É necessário aceitar o uso dos dados para a contratação." });
+  }
+  try {
+    const r = await criarVendaPF(b, "autocadastro");
+    res.json(r);
+  } catch (e) {
+    if (!e.status) console.error("Erro no autocadastro:", e);
+    res.status(e.status || 500).json({ erro: e.message });
+  }
+});
+
+// Metadados públicos para a página de autocadastro (sem dados sensíveis)
+app.get("/api/checkout/meta", (req, res) => {
+  res.json({ planos: PLANOS, formasPagamento: FORMAS_PAGAMENTO, sexos: SEXOS, estadosCivis: ESTADOS_CIVIS, graus: GRAUS_PARENTESCO });
 });
 
 // =====================================================================
