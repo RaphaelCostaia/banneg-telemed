@@ -154,10 +154,10 @@ async function criarVendaPF(b, vendedorNome) {
     }
   }
 
-  const billingType = ["PIX", "CREDIT_CARD"].includes(b.billingType) ? b.billingType : "PIX";
+  const billingType = "CREDIT_CARD"; // apenas cartão de crédito
   const qtdVidas = 1 + dependentes.length;
   const valor = calcularValor(plano.id, billingType, qtdVidas);
-  if (valor == null) throw httpErro(400, "Não foi possível calcular o valor para este plano/forma de pagamento.");
+  if (valor == null) throw httpErro(400, "Não foi possível calcular o valor para este plano.");
 
   const info = db.prepare(
     `INSERT INTO vendas
@@ -282,7 +282,7 @@ async function criarVendaEmpresa(req, res) {
       }
     }
 
-    const billingType = ["PIX", "CREDIT_CARD"].includes(b.billingType) ? b.billingType : "PIX";
+    const billingType = "CREDIT_CARD"; // apenas cartão de crédito
     const qtdVidas = vidas.length;
     const porVida = precoPorVidaPME(qtdVidas);
     const cotacao = porVida == null; // acima de 100 vidas

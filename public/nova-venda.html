@@ -108,7 +108,6 @@
           <div class="field"><label>Forma de pagamento</label>
             <select id="billing" onchange="atualizarTotal()">
               <option value="CREDIT_CARD">Cartão de crédito</option>
-              <option value="PIX">Pix</option>
             </select>
           </div>
           <div class="field"><label>Vendedor</label><input id="vendedor" placeholder="Seu nome" /></div>
@@ -167,7 +166,7 @@ async function init() {
     `<div class="plan" data-id="${p.id}" onclick="selPlano('${p.id}')">
        <div class="nome">${p.nome}</div>
        <div class="preco">${BRL(p.preco.CREDIT_CARD)}</div>
-       <div class="vidas">cartão · Pix ${BRL(p.preco.PIX)}</div>
+       <div class="vidas">por mês no cartão</div>
        <div class="vidas">${p.maxDependentes===0 ? "1 vida" : "titular + dependentes"}${p.adicionalPorVida?` (+${BRL(p.adicionalPorVida)}/vida acima de ${p.vidasBase})`:""}</div>
      </div>`).join("");
   selPlano("individual");

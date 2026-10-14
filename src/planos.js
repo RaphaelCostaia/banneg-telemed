@@ -1,10 +1,9 @@
 // Catálogo de planos da Banneg Telemedicina e tabelas de domínio do Protheus PLS.
 // Os códigos abaixo foram extraídos da "API de Beneficiarios v1.5" (Medicar/TOTVS).
 
-// Formas de pagamento aceitas (produção): apenas PIX e cartão de crédito.
+// Forma de pagamento aceita (produção): apenas cartão de crédito recorrente.
 export const FORMAS_PAGAMENTO = {
   CREDIT_CARD: "Cartão de crédito",
-  PIX: "Pix",
 };
 
 // Planos de PESSOA FÍSICA. Preço varia por forma de pagamento.

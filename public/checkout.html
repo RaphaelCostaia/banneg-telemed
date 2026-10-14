@@ -56,14 +56,6 @@
     </div>
 
     <div class="co-card">
-      <h3>Forma de pagamento</h3>
-      <div class="pick" id="formas">
-        <div class="opt" data-forma="CREDIT_CARD" onclick="selForma('CREDIT_CARD')"><div class="n">💳 Cartão</div><div class="s">recorrente mensal</div></div>
-        <div class="opt" data-forma="PIX" onclick="selForma('PIX')"><div class="n">⚡ Pix</div><div class="s">copia e cola</div></div>
-      </div>
-    </div>
-
-    <div class="co-card">
       <h3>Seus dados</h3>
       <div class="field"><label>Nome completo</label><input id="t_nome" placeholder="Nome e sobrenome" /></div>
       <div class="row2">
@@ -101,7 +93,8 @@
 <script>
 const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const qs = new URLSearchParams(location.search);
-let META = {}, planoSel = null, forma = "CREDIT_CARD", deps = [];
+let META = {}, planoSel = null, deps = [];
+const forma = "CREDIT_CARD"; // apenas cartão
 const val = (id) => document.getElementById(id).value.trim();
 
 async function init() {
@@ -112,11 +105,8 @@ async function init() {
   document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
     `<div class="opt" data-id="${p.id}" onclick="selPlano('${p.id}')">
        <div class="n">${p.nome}</div><div class="p">${BRL(p.preco.CREDIT_CARD)}</div>
-       <div class="s">cartão · Pix ${BRL(p.preco.PIX)}</div></div>`).join("");
+       <div class="s">por mês no cartão</div></div>`).join("");
 
-  const fQ = (qs.get("forma") || "").toUpperCase();
-  forma = fQ === "PIX" ? "PIX" : "CREDIT_CARD";
-  selForma(forma);
   const pQ = qs.get("plano");
   selPlano(META.planos[pQ] ? pQ : "individual");
 
@@ -126,11 +116,6 @@ async function init() {
 function fill(id, map, blank) {
   document.getElementById(id).innerHTML = (blank ? `<option value="">—</option>` : "") +
     Object.entries(map).map(([k, v]) => `<option value="${k}">${v}</option>`).join("");
-}
-function selForma(f) {
-  forma = f;
-  document.querySelectorAll("#formas .opt").forEach(e => e.classList.toggle("sel", e.dataset.forma === f));
-  total();
 }
 function selPlano(id) {
   planoSel = META.planos[id];
@@ -205,17 +190,9 @@ async function enviar() {
 }
 
 function sucesso(r) {
-  let pag = "";
-  if (forma === "PIX" && r.pixCopiaECola) {
-    pag = `<p><b>Pague com Pix</b> (copia e cola):</p>
-      <div class="pixbox" id="pixcode">${r.pixCopiaECola}</div>
-      <button class="cta" style="margin-top:10px" onclick="copiarPix()">📋 Copiar código Pix</button>
-      ${r.paymentLink ? `<p class="center" style="margin-top:12px"><a href="${r.paymentLink}" target="_blank">ou abrir a página de pagamento</a></p>` : ""}`;
-  } else if (r.paymentLink) {
-    pag = `<a class="cta" style="display:block;text-align:center;text-decoration:none" href="${r.paymentLink}" target="_blank">💳 Pagar agora</a>`;
-  } else {
-    pag = `<p class="muted">O link de pagamento será enviado em instantes.</p>`;
-  }
+  const pag = r.paymentLink
+    ? `<a class="cta" style="display:block;text-align:center;text-decoration:none" href="${r.paymentLink}" target="_blank">💳 Pagar com cartão</a>`
+    : `<p class="muted">O link de pagamento será gerado em instantes.</p>`;
   document.getElementById("modalBox").innerHTML = `
     <h2 style="margin-top:0">✅ Quase lá!</h2>
     <p>Seu plano <b>${r.plano}</b> — <b>${BRL(r.valor)}/mês</b>.</p>
