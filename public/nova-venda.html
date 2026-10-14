@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Banneg Telemedicina — Nova venda</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-logo">Banneg <span>Telemedicina</span></div>
+    <nav class="side-nav">
+      <a href="/#geral"><span class="ico">📊</span> Visão geral</a>
+      <a class="active"><span class="ico">➕</span> Nova venda</a>
+      <div class="sep"></div>
+      <a href="/#vendas"><span class="ico">👥</span> Vendas e clientes</a>
+      <a href="/#inad"><span class="ico">⚠️</span> Inadimplência</a>
+      <a href="/#churn"><span class="ico">📉</span> Cancelamentos</a>
+      <a href="/#cobr"><span class="ico">💳</span> Cobranças</a>
+    </nav>
+    <div class="side-user"><div id="userbox">…</div></div>
+  </aside>
+
+  <main class="main">
+    <header class="main-head">
+      <button class="hamb" onclick="toggleSidebar()">☰</button>
+      <h1>Nova venda</h1>
+      <a class="btn" href="/">← Voltar ao painel</a>
+    </header>
+    <div class="content">
+      <p class="sub" style="margin-top:0">Cadastre o titular e os dependentes. O sistema cria a assinatura no Asaas e gera o link de pagamento.</p>
+
+      <div id="banner"></div>
+
+      <form id="form" onsubmit="return false">
+
+    <div class="section">
+      <div class="plan-pick" style="grid-template-columns:1fr 1fr;max-width:520px">
+        <div class="plan sel" id="tab-pf" onclick="setModo('pf')"><div class="nome">👤 Pessoa Física</div><div class="vidas">Individual ou Familiar</div></div>
+        <div class="plan" id="tab-pme" onclick="setModo('pme')"><div class="nome">🏢 Empresa (PME)</div><div class="vidas">CNPJ · preço por vida</div></div>
+      </div>
+    </div>
+
+    <div id="modoPF">
+    <div class="section">
+      <h2>Plano</h2>
+      <div class="plan-pick" id="planos"></div>
+    </div>
+
+    <div class="section">
+      <h2>Titular</h2>
+      <div class="panel" style="padding:18px">
+        <div class="form-grid">
+          <div class="field full"><label>Nome completo *</label><input id="t_nome" required /></div>
+          <div class="field"><label>CPF *</label><input id="t_cpf" required placeholder="000.000.000-00" /></div>
+          <div class="field"><label>Data de nascimento</label><input id="t_nasc" type="date" /></div>
+          <div class="field"><label>Sexo</label><select id="t_sexo"></select></div>
+          <div class="field"><label>Estado civil</label><select id="t_estciv"></select></div>
+          <div class="field"><label>Nome da mãe</label><input id="t_mae" /></div>
+          <div class="field"><label>E-mail</label><input id="t_email" type="email" /></div>
+          <div class="field"><label>Celular (DDD + número)</label>
+            <div style="display:flex;gap:8px"><input id="t_ddd" style="width:70px" placeholder="DDD" /><input id="t_tel" style="flex:1" placeholder="Telefone" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Dependentes <span class="muted" id="depInfo" style="font-size:13px;font-weight:400"></span></h2>
+      <div id="deps"></div>
+      <button class="btn" id="addDep" type="button" style="margin-top:12px">+ Adicionar dependente</button>
+    </div>
+    </div><!-- /modoPF -->
+
+    <div id="modoPME" hidden>
+      <div class="section">
+        <h2>Dados da empresa</h2>
+        <div class="panel" style="padding:18px">
+          <div class="form-grid">
+            <div class="field full"><label>Razão social *</label><input id="e_razao" /></div>
+            <div class="field"><label>CNPJ *</label><input id="e_cnpj" placeholder="00.000.000/0000-00" /></div>
+            <div class="field"><label>E-mail</label><input id="e_email" type="email" /></div>
+            <div class="field"><label>Telefone (DDD + número)</label>
+              <div style="display:flex;gap:8px"><input id="e_ddd" style="width:70px" placeholder="DDD" /><input id="e_tel" style="flex:1" placeholder="Telefone" /></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Vidas (colaboradores) <span class="muted" id="vidasInfo" style="font-size:13px;font-weight:400"></span></h2>
+        <div class="banner info" style="margin-bottom:12px">Adicione as vidas manualmente ou cole uma lista (1 por linha): <span class="mono">Nome;CPF;AAAA-MM-DD;M/F</span></div>
+        <details style="margin-bottom:12px">
+          <summary style="cursor:pointer;font-weight:600">📋 Importar lista em massa</summary>
+          <textarea id="vidasBulk" rows="5" style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:9px;font-family:ui-monospace,monospace;font-size:13px" placeholder="João da Silva;12345678901;1985-03-10;M&#10;Maria Souza;98765432100;1990-07-22;F"></textarea>
+          <button class="btn sm" type="button" onclick="importarVidas()" style="margin-top:8px">Importar</button>
+        </details>
+        <div id="vidas"></div>
+        <button class="btn" id="addVida" type="button" style="margin-top:12px">+ Adicionar vida</button>
+      </div>
+    </div><!-- /modoPME -->
+
+    <div class="section">
+      <h2>Pagamento</h2>
+      <div class="panel" style="padding:18px">
+        <div class="form-grid">
+          <div class="field"><label>Forma de pagamento</label>
+            <select id="billing" onchange="atualizarTotal()">
+              <option value="CREDIT_CARD">Cartão de crédito</option>
+              <option value="PIX">Pix</option>
+            </select>
+          </div>
+          <div class="field"><label>Vendedor</label><input id="vendedor" placeholder="Seu nome" /></div>
+          <div class="field full"><label>Total mensal</label><div style="font-size:24px;font-weight:800;color:var(--brand-d)" id="total">R$ 0,00</div><div class="muted" id="totalDetalhe" style="font-size:12px"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section right">
+      <button class="btn primary" id="submit" type="button" style="padding:12px 26px;font-size:15px">Criar venda e gerar cobrança</button>
+    </div>
+  </form>
+    </div>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop" onclick="toggleSidebar()"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+
+<script>
+const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+let META = {}, planoSel = null, deps = [], modo = "pf", vidas = [];
+
+function setModo(m) {
+  modo = m;
+  document.getElementById("tab-pf").classList.toggle("sel", m === "pf");
+  document.getElementById("tab-pme").classList.toggle("sel", m === "pme");
+  document.getElementById("modoPF").hidden = m !== "pf";
+  document.getElementById("modoPME").hidden = m !== "pme";
+  atualizarTotal();
+}
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) { location.href = "/login.html"; throw new Error("sessão expirada"); }
+  return r.json();
+}
+async function sair() { await fetch("/api/logout", { method:"POST" }); location.href = "/login.html"; }
+function toggleSidebar(){ document.getElementById("sidebar").classList.toggle("open"); document.getElementById("backdrop").classList.toggle("show"); }
+
+async function init() {
+  const me = await api("/api/me");
+  document.getElementById("userbox").innerHTML =
+    `<div>👤 <b>${me.nome}</b></div><a href="#" onclick="sair();return false">Sair</a>`;
+  META = await api("/api/meta");
+  if (!META.asaasConfigurado)
+    document.getElementById("banner").innerHTML =
+      `<div class="banner warn">⚠ <b>Asaas não configurado.</b> Cole sua chave de API (Sandbox) em <span class="mono">sistema/.env → ASAAS_API_KEY</span> e reinicie o servidor. Sem isso a venda não pode ser criada.</div>`;
+
+  // selects de domínio
+  fill("t_sexo", META.sexos, true);
+  fill("t_estciv", META.estadosCivis, true);
+
+  // planos
+  document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
+    `<div class="plan" data-id="${p.id}" onclick="selPlano('${p.id}')">
+       <div class="nome">${p.nome}</div>
+       <div class="preco">${BRL(p.preco.CREDIT_CARD)}</div>
+       <div class="vidas">cartão · Pix ${BRL(p.preco.PIX)}</div>
+       <div class="vidas">${p.maxDependentes===0 ? "1 vida" : "titular + dependentes"}${p.adicionalPorVida?` (+${BRL(p.adicionalPorVida)}/vida acima de ${p.vidasBase})`:""}</div>
+     </div>`).join("");
+  selPlano("individual");
+
+  document.getElementById("addDep").onclick = addDep;
+  document.getElementById("addVida").onclick = addVida;
+  document.getElementById("submit").onclick = enviar;
+}
+
+// ---- Vidas (empresa/PME) ----
+function addVida() { vidas.push({ nome:"", cpf:"", nascimento:"", sexo:"", mae:"" }); renderVidas(); }
+function rmVida(i) { vidas.splice(i,1); renderVidas(); }
+
+function renderVidas() {
+  document.getElementById("vidasInfo").textContent = `(${vidas.length} vida${vidas.length!==1?"s":""})`;
+  const sexoOpt = `<option value="">—</option>` + Object.entries(META.sexos).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  document.getElementById("vidas").innerHTML = vidas.map((v,i)=>`
+    <div class="dep-card">
+      <div class="head"><b>Vida ${i+1}</b><button class="btn sm" type="button" onclick="rmVida(${i})">Remover</button></div>
+      <div class="form-grid">
+        <div class="field full"><label>Nome completo *</label><input value="${v.nome||""}" oninput="vidas[${i}].nome=this.value" /></div>
+        <div class="field"><label>CPF</label><input value="${v.cpf||""}" oninput="vidas[${i}].cpf=this.value" /></div>
+        <div class="field"><label>Nascimento</label><input type="date" value="${v.nascimento||""}" oninput="vidas[${i}].nascimento=this.value" /></div>
+        <div class="field"><label>Sexo</label><select onchange="vidas[${i}].sexo=this.value">${sexoOpt}</select></div>
+        <div class="field"><label>Nome da mãe</label><input value="${v.mae||""}" oninput="vidas[${i}].mae=this.value" /></div>
+      </div>
+    </div>`).join("");
+  vidas.forEach((v,i)=>{ const c=document.querySelectorAll("#vidas .dep-card")[i]; if(c){ const s=c.querySelector("select"); if(s) s.value=v.sexo||""; }});
+  atualizarTotal();
+}
+
+function importarVidas() {
+  const txt = document.getElementById("vidasBulk").value.trim();
+  if (!txt) return;
+  let add = 0;
+  for (const l of txt.split(/\n+/)) {
+    const p = l.split(/[;\t,]/).map(x=>x.trim());
+    if (!p[0]) continue;
+    let s = (p[3]||"").toUpperCase();
+    s = (s==="M"||s==="1") ? "1" : (s==="F"||s==="2") ? "2" : "";
+    vidas.push({ nome:p[0], cpf:(p[1]||"").replace(/\D/g,""), nascimento:p[2]||"", sexo:s, mae:"" });
+    add++;
+  }
+  document.getElementById("vidasBulk").value = "";
+  renderVidas();
+  alert(`${add} vida(s) importada(s).`);
+}
+
+function fill(id, map, blank) {
+  const el = document.getElementById(id);
+  el.innerHTML = (blank ? `<option value="">—</option>` : "") +
+    Object.entries(map).map(([k,v]) => `<option value="${k}">${v}</option>`).join("");
+}
+
+function selPlano(id) {
+  planoSel = META.planos[id];
+  document.querySelectorAll(".plan").forEach(e => e.classList.toggle("sel", e.dataset.id===id));
+  // ajusta dependentes ao máximo do plano
+  if (deps.length > planoSel.maxDependentes) deps = deps.slice(0, planoSel.maxDependentes);
+  renderDeps();
+  atualizarTotal();
+}
+
+function addDep() {
+  if (deps.length >= planoSel.maxDependentes) { alert(`O plano ${planoSel.nome} não permite mais dependentes.`); return; }
+  deps.push({ nome:"", cpf:"", nascimento:"", sexo:"", estciv:"", grau:"05", mae:"" });
+  renderDeps();
+}
+function rmDep(i){ deps.splice(i,1); renderDeps(); }
+
+function renderDeps() {
+  const info = document.getElementById("depInfo");
+  info.textContent = `(${deps.length}/${planoSel.maxDependentes})`;
+  document.getElementById("addDep").disabled = deps.length >= planoSel.maxDependentes;
+  const grausOpt = Object.entries(META.graus).filter(([k])=>k!=="00")
+    .map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  const sexoOpt = `<option value="">—</option>`+Object.entries(META.sexos).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  const estOpt = `<option value="">—</option>`+Object.entries(META.estadosCivis).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+
+  document.getElementById("deps").innerHTML = deps.map((d,i)=>`
+    <div class="dep-card">
+      <div class="head"><b>Dependente ${i+1}</b><button class="btn sm" type="button" onclick="rmDep(${i})">Remover</button></div>
+      <div class="form-grid">
+        <div class="field full"><label>Nome completo *</label><input value="${d.nome}" oninput="deps[${i}].nome=this.value" /></div>
+        <div class="field"><label>Parentesco</label><select onchange="deps[${i}].grau=this.value">${grausOpt}</select></div>
+        <div class="field"><label>CPF (se ≥ 18 anos)</label><input value="${d.cpf}" oninput="deps[${i}].cpf=this.value" /></div>
+        <div class="field"><label>Nascimento</label><input type="date" value="${d.nascimento}" oninput="deps[${i}].nascimento=this.value" /></div>
+        <div class="field"><label>Sexo</label><select onchange="deps[${i}].sexo=this.value">${sexoOpt}</select></div>
+        <div class="field"><label>Estado civil</label><select onchange="deps[${i}].estciv=this.value">${estOpt}</select></div>
+        <div class="field full"><label>Nome da mãe</label><input value="${d.mae}" oninput="deps[${i}].mae=this.value" /></div>
+      </div>
+    </div>`).join("");
+  // restaura os valores selecionados (grau, sexo, estado civil)
+  deps.forEach((d,i)=>{
+    const card = document.querySelectorAll(".dep-card")[i];
+    if(!card) return;
+    const [grau, sexo, est] = card.querySelectorAll("select");
+    grau.value = d.grau || "05";
+    sexo.value = d.sexo || "";
+    est.value  = d.estciv || "";
+  });
+  atualizarTotal();
+}
+
+function calcValor(plano, forma, vidas) {
+  const base = plano.preco?.[forma];
+  if (base == null) return null;
+  if (plano.adicionalPorVida && vidas > plano.vidasBase) return base + (vidas - plano.vidasBase) * plano.adicionalPorVida;
+  return base;
+}
+
+function atualizarTotal() {
+  const forma = document.getElementById("billing").value;
+  const total = document.getElementById("total"), det = document.getElementById("totalDetalhe");
+
+  if (modo === "pme") {
+    const n = vidas.length;
+    if (n === 0) { total.textContent = "R$ 0,00"; det.textContent = "Adicione as vidas (colaboradores)"; return; }
+    const faixa = (META.pme?.faixas || []).find((f) => n >= f.min && n <= f.max);
+    if (!faixa) { total.textContent = "Cotação"; det.textContent = `Acima de ${META.pme?.limiteCotacao || 100} vidas — encaminhar ao consultor`; return; }
+    total.textContent = BRL(faixa.porVida * n);
+    det.textContent = `${n} vidas × ${BRL(faixa.porVida)}/vida`;
+    return;
+  }
+
+  const nv = 1 + deps.length;
+  const v = calcValor(planoSel, forma, nv);
+  total.textContent = v == null ? "—" : BRL(v);
+  let d = `${nv} vida${nv > 1 ? "s" : ""} · ${META.formasPagamento?.[forma] || forma}`;
+  if (planoSel.adicionalPorVida && nv > planoSel.vidasBase)
+    d += ` — base ${BRL(planoSel.preco[forma])} + ${nv - planoSel.vidasBase}× ${BRL(planoSel.adicionalPorVida)}`;
+  det.textContent = d;
+}
+
+async function enviar() {
+  if (modo === "pme") return enviarEmpresa();
+  const t = {
+    nome: val("t_nome"), cpf: val("t_cpf"), nascimento: val("t_nasc"),
+    sexo: val("t_sexo"), estciv: val("t_estciv"), mae: val("t_mae"),
+    email: val("t_email"), ddd: val("t_ddd"), telefone: val("t_tel"),
+  };
+  if (!t.nome || !t.cpf.replace(/\D/g,"")) { alert("Informe nome e CPF do titular."); return; }
+  for (const [i,d] of deps.entries()) if (!d.nome) { alert(`Informe o nome do dependente ${i+1}.`); return; }
+
+  const btn = document.getElementById("submit");
+  btn.disabled = true; btn.textContent = "Processando…";
+  try {
+    const r = await fetch("/api/vendas", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ tipo_plano: planoSel.id, billingType: val("billing"), vendedor: val("vendedor"), titular: t, dependentes: deps }),
+    }).then(r=>r.json());
+    if (r.erro) throw new Error(r.erro);
+    sucesso(r);
+  } catch(e) {
+    alert("Erro ao criar venda: " + e.message);
+    btn.disabled = false; btn.textContent = "Criar venda e gerar cobrança";
+  }
+}
+
+function sucesso(r) {
+  const link = r.paymentLink
+    ? `<a class="btn primary" href="${r.paymentLink}" target="_blank">Abrir link de pagamento</a>`
+    : `<p class="muted">Link de pagamento será gerado pelo Asaas em instantes.</p>`;
+  document.getElementById("modalBox").innerHTML = `
+    <h2 style="margin-top:0">✅ Venda criada!</h2>
+    <p>Venda <b>#${r.venda_id}</b> registrada e assinatura criada no Asaas.</p>
+    <p class="muted mono">customer ${r.customer} · subscription ${r.subscription}</p>
+    <p>Envie o link abaixo ao cliente. Assim que o pagamento for confirmado, a liberação no portal é feita automaticamente.</p>
+    <div style="margin:14px 0">${link}</div>
+    <div class="right"><a class="btn" href="/">Ir para o dashboard</a> <button class="btn primary" onclick="location.reload()">Nova venda</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+
+async function enviarEmpresa() {
+  const empresa = {
+    razao_social: val("e_razao"), cnpj: val("e_cnpj"),
+    email: val("e_email"), ddd: val("e_ddd"), telefone: val("e_tel"),
+  };
+  if (!empresa.razao_social || empresa.cnpj.replace(/\D/g,"").length !== 14) {
+    alert("Informe a razão social e um CNPJ válido (14 dígitos)."); return;
+  }
+  const lista = vidas.filter((v) => v.nome && v.nome.trim());
+  if (!lista.length) { alert("Adicione ao menos uma vida (colaborador)."); return; }
+
+  const btn = document.getElementById("submit");
+  btn.disabled = true; btn.textContent = "Processando…";
+  try {
+    const r = await fetch("/api/vendas", {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ tipo_plano: "empresa", billingType: val("billing"), vendedor: val("vendedor"), empresa, vidas: lista }),
+    }).then(r=>r.json());
+    if (r.erro) throw new Error(r.erro);
+    sucessoEmpresa(r);
+  } catch(e) {
+    alert("Erro ao criar venda: " + e.message);
+    btn.disabled = false; btn.textContent = "Criar venda e gerar cobrança";
+  }
+}
+
+function sucessoEmpresa(r) {
+  const box = document.getElementById("modalBox");
+  if (r.cotacao) {
+    box.innerHTML = `
+      <h2 style="margin-top:0">📋 Cotação necessária</h2>
+      <p>${r.mensagem}</p>
+      <p class="muted">Venda <b>#${r.venda_id}</b> registrada com ${r.qtdVidas} vidas, sem cobrança.</p>
+      <div class="right"><a class="btn" href="/">Ir para o dashboard</a> <button class="btn primary" onclick="location.reload()">Nova venda</button></div>`;
+  } else {
+    const link = r.paymentLink
+      ? `<a class="btn primary" href="${r.paymentLink}" target="_blank">Abrir link de pagamento</a>`
+      : `<p class="muted">Link de pagamento será gerado em instantes.</p>`;
+    box.innerHTML = `
+      <h2 style="margin-top:0">✅ Venda criada!</h2>
+      <p>Empresa registrada com <b>${r.qtdVidas} vidas</b> — ${BRL(r.valor)}/mês (${BRL(r.porVida)}/vida).</p>
+      <p class="muted mono">customer ${r.customer} · subscription ${r.subscription}</p>
+      <div style="margin:14px 0">${link}</div>
+      <div class="right"><a class="btn" href="/">Ir para o dashboard</a> <button class="btn primary" onclick="location.reload()">Nova venda</button></div>`;
+  }
+  document.getElementById("modalBg").classList.add("show");
+}
+
+const val = (id) => document.getElementById(id).value.trim();
+init();
+</script>
+</body>
+</html>

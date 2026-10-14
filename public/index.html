@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Banneg Telemedicina — Dashboard</title>
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <div class="side-logo">Banneg <span>Telemedicina</span></div>
+    <nav class="side-nav">
+      <a data-view="geral" class="active" onclick="showView('geral')"><span class="ico">📊</span> Visão geral</a>
+      <a href="/nova-venda.html"><span class="ico">➕</span> Nova venda</a>
+      <div class="sep"></div>
+      <a data-view="vendas" onclick="showView('vendas')"><span class="ico">👥</span> Vendas e clientes</a>
+      <a data-view="inad" onclick="showView('inad')"><span class="ico">⚠️</span> Inadimplência <span id="navInad"></span></a>
+      <a data-view="churn" onclick="showView('churn')"><span class="ico">📉</span> Cancelamentos</a>
+      <a data-view="cobr" onclick="showView('cobr')"><span class="ico">💳</span> Cobranças</a>
+    </nav>
+    <div class="side-user"><div id="userbox">…</div></div>
+  </aside>
+
+  <main class="main">
+    <header class="main-head">
+      <button class="hamb" onclick="toggleSidebar()">☰</button>
+      <h1 id="viewTitle">Visão geral</h1>
+      <a class="btn primary" href="/nova-venda.html">+ Nova venda</a>
+    </header>
+
+    <div class="content">
+      <div id="banners"></div>
+
+      <!-- ===== VISÃO GERAL ===== -->
+      <section class="view" data-view="geral">
+        <div class="panel" style="padding:12px 16px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;background:#f0fdfa;border-color:#99f6e4">
+          <span>🔄 <b>Sincronização com o Asaas</b></span>
+          <span id="syncInfo" class="muted" style="font-size:13px"></span>
+          <button class="btn sm primary" id="btnSync" onclick="sincronizar()" style="margin-left:auto">Sincronizar agora</button>
+        </div>
+
+        <div class="panel" style="padding:12px 16px;margin-bottom:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <b>Período:</b>
+          <input type="date" id="pDe" onchange="carregar()" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px" />
+          <span class="muted">até</span>
+          <input type="date" id="pAte" onchange="carregar()" style="padding:7px 10px;border:1px solid var(--line);border-radius:8px" />
+          <button class="btn sm" onclick="periodoMes()">Mês atual</button>
+          <span id="periodoResumo" class="muted" style="margin-left:auto;font-size:13px"></span>
+        </div>
+
+        <h2 style="font-size:14px;color:var(--muted);margin:0 0 8px">Resumo do período</h2>
+        <div class="cards" id="periodCards" style="margin-bottom:20px"></div>
+
+        <h2 style="font-size:14px;color:var(--muted);margin:0 0 8px">Visão geral (acumulado)</h2>
+        <div class="cards" id="cards"></div>
+
+        <div class="section">
+          <h2>Evolução da carteira</h2>
+          <div class="panel" style="padding:18px"><div id="chart"></div></div>
+        </div>
+      </section>
+
+      <!-- ===== VENDAS ===== -->
+      <section class="view" data-view="vendas" hidden>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <input id="busca" placeholder="Buscar por nome ou CPF…" style="padding:8px 12px;border:1px solid var(--line);border-radius:9px;min-width:220px" oninput="filtrar()" />
+          <select id="fpag" onchange="filtrar()" style="padding:8px 10px;border:1px solid var(--line);border-radius:9px">
+            <option value="">Todos pagamentos</option>
+            <option value="aguardando">Aguardando</option><option value="confirmado">Confirmado</option>
+            <option value="recebido">Recebido</option><option value="vencido">Vencido</option><option value="estornado">Estornado</option>
+          </select>
+          <select id="flib" onchange="filtrar()" style="padding:8px 10px;border:1px solid var(--line);border-radius:9px">
+            <option value="">Todas liberações</option>
+            <option value="pendente">Pendente</option><option value="liberado">Liberado</option>
+            <option value="bloqueado">Bloqueado</option><option value="erro">Erro</option>
+          </select>
+          <a class="btn sm" href="/api/export/vendas.csv" style="margin-left:auto">⬇ Exportar CSV</a>
+        </div>
+        <div class="panel">
+          <table>
+            <thead><tr>
+              <th>#</th><th>Titular</th><th>Plano</th><th>Valor</th>
+              <th>Pagamento</th><th>Liberação</th><th>Cobrança</th><th></th>
+            </tr></thead>
+            <tbody id="vendas"><tr><td colspan="8" class="muted">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== INADIMPLÊNCIA ===== -->
+      <section class="view" data-view="inad" hidden>
+        <p class="sub" id="inadResumo" style="margin-top:0"></p>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Titular</th><th>Plano</th><th>Cobranças vencidas</th><th>Dias em atraso</th><th>Valor em risco</th><th>Situação</th><th></th></tr></thead>
+            <tbody id="inadimplencia"><tr><td colspan="7" class="muted">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ===== CANCELAMENTOS ===== -->
+      <section class="view" data-view="churn" hidden>
+        <p class="sub" id="churnResumo" style="margin-top:0"></p>
+        <div class="panel" style="padding:16px"><div id="churnBox"></div></div>
+      </section>
+
+      <!-- ===== COBRANÇAS ===== -->
+      <section class="view" data-view="cobr" hidden>
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+          <a class="btn sm" href="/api/export/cobrancas.csv" style="margin-left:auto">⬇ Exportar CSV</a>
+        </div>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Vencimento</th><th>Titular</th><th>Forma</th><th>Valor</th><th>Status</th><th>Link</th></tr></thead>
+            <tbody id="cobrancas"><tr><td colspan="6" class="muted">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="backdrop" id="backdrop" onclick="toggleSidebar()"></div>
+<div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+
+<script>
+const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtData = (ymd) => ymd ? ymd.split("-").reverse().join("/") : "—";
+const fmtMes = (ym) => { const [a,m]=ym.split("-"); return ["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m]+"/"+a.slice(2); };
+let META = {}, VENDAS = [];
+
+const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças" };
+const PLANO_NOME = { individual: "Individual", familiar: "Familiar", empresa: "Empresa", unitario: "Individual", casal: "Casal" };
+const PAG_BADGE = { aguardando:["gray","Aguardando"], confirmado:["green","Confirmado"], recebido:["green","Recebido"], vencido:["red","Vencido"], estornado:["amber","Estornado"], cotacao:["blue","Cotação"] };
+const LIB_BADGE = { pendente:["gray","Pendente"], liberado:["green","Liberado"], bloqueado:["red","Bloqueado"], erro:["red","Erro"] };
+const COB_BADGE = { RECEIVED:["green","Pago"], CONFIRMED:["green","Confirmado"], RECEIVED_IN_CASH:["green","Pago"], PENDING:["amber","Pendente"], OVERDUE:["red","Vencido"], REFUNDED:["gray","Estornado"], AWAITING_RISK_ANALYSIS:["amber","Em análise"] };
+const badge = (map, key) => { const [c,l] = map[key] || ["gray", key || "—"]; return `<span class="badge ${c}">${l}</span>`; };
+
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.hidden = v.dataset.view !== name);
+  document.querySelectorAll(".side-nav a[data-view]").forEach(a => a.classList.toggle("active", a.dataset.view === name));
+  document.getElementById("viewTitle").textContent = TITULOS[name] || "";
+  if (window.matchMedia("(max-width:860px)").matches) fecharSidebar();
+  window.scrollTo(0, 0);
+  location.hash = name;
+}
+function toggleSidebar(){ document.getElementById("sidebar").classList.toggle("open"); document.getElementById("backdrop").classList.toggle("show"); }
+function fecharSidebar(){ document.getElementById("sidebar").classList.remove("open"); document.getElementById("backdrop").classList.remove("show"); }
+
+async function api(url, opts) {
+  const r = await fetch(url, opts);
+  if (r.status === 401) { location.href = "/login.html"; throw new Error("sessão expirada"); }
+  return r.json();
+}
+
+async function carregar() {
+  const me = await api("/api/me");
+  document.getElementById("userbox").innerHTML =
+    `<div>👤 <b>${me.nome}</b></div><a href="#" onclick="sair();return false">Sair</a>`;
+  META = await api("/api/meta");
+  renderBanners();
+  renderSyncInfo();
+
+  const de = document.getElementById("pDe").value, ate = document.getElementById("pAte").value;
+  const qs = new URLSearchParams(); if (de) qs.set("de", de); if (ate) qs.set("ate", ate);
+  const q = qs.toString() ? "?" + qs.toString() : "";
+
+  const [dash, vendas, cobrancas, carteira, inad, churn] = await Promise.all([
+    api("/api/dashboard" + q), api("/api/vendas"), api("/api/cobrancas"),
+    api("/api/relatorios/carteira"), api("/api/relatorios/inadimplencia"), api("/api/relatorios/churn" + q),
+  ]);
+  VENDAS = vendas;
+  if (!de) document.getElementById("pDe").value = dash.periodo.de;
+  if (!ate) document.getElementById("pAte").value = dash.periodo.ate;
+
+  renderPeriodo(dash.periodo);
+  renderCards(dash);
+  renderChart(carteira);
+  filtrar();
+  renderInadimplencia(inad);
+  renderChurn(churn);
+  renderCobrancas(cobrancas);
+}
+
+async function sair() { await fetch("/api/logout", { method:"POST" }); location.href = "/login.html"; }
+
+function renderSyncInfo() {
+  const el = document.getElementById("syncInfo");
+  if (!META.asaasConfigurado) { el.innerHTML = "Asaas não configurado."; document.getElementById("btnSync").disabled = true; return; }
+  const q = META.ultimaSync ? new Date(META.ultimaSync).toLocaleString("pt-BR") : "ainda não sincronizado";
+  el.innerHTML = `Automático a cada ${META.syncIntervaloMin} min · última: <b>${q}</b>`;
+}
+
+async function sincronizar() {
+  const btn = document.getElementById("btnSync");
+  btn.disabled = true; btn.textContent = "Sincronizando…";
+  try {
+    const r = await api("/api/asaas/sincronizar", { method:"POST" });
+    if (r.erro) throw new Error(r.erro);
+    const msg = r.acoes?.length ? `${r.acoes.length} ação(ões): ` + r.acoes.map(a=>a.acao).join(", ") : "nenhuma novidade";
+    await carregar();
+    btn.textContent = "Sincronizar agora"; btn.disabled = false;
+    alert(`Sincronização concluída — ${r.assinaturas} assinatura(s), ${r.cobrancasVistas} cobrança(s). ${msg}.`);
+  } catch (e) { alert("Falha ao sincronizar: " + e.message); btn.textContent = "Sincronizar agora"; btn.disabled = false; }
+}
+
+function periodoMes() {
+  const hoje = new Date();
+  document.getElementById("pDe").value = hoje.toISOString().slice(0,7) + "-01";
+  document.getElementById("pAte").value = hoje.toISOString().slice(0,10);
+  carregar();
+}
+
+function renderBanners() {
+  let html = "";
+  if (!META.asaasConfigurado)
+    html += `<div class="banner warn">⚠ <b>Asaas não configurado.</b> Cole sua chave de API (Sandbox) em <span class="mono">sistema/.env → ASAAS_API_KEY</span> e reinicie o servidor para criar vendas.</div>`;
+  if (META.protheus?.dryRun)
+    html += `<div class="banner info">ℹ <b>Modo simulação da liberação ativo.</b> Liberações/bloqueios são apenas registrados (não enviados ao Protheus). Ajuste <span class="mono">PROTHEUS_DRY_RUN=false</span> quando for operar de verdade.</div>`;
+  document.getElementById("banners").innerHTML = html;
+}
+
+function renderPeriodo(p) {
+  document.getElementById("periodoResumo").textContent = `${fmtData(p.de)} — ${fmtData(p.ate)}`;
+  const c = [
+    ["Vendas no período", p.vendasNoPeriodo, "brand", ""],
+    ["Recebido no período", BRL(p.recebidoNoPeriodo), "", "small ok"],
+    ["Ticket médio", BRL(p.ticketMedio), "", "small"],
+    ["Cancelamentos no período", p.canceladosNoPeriodo, "", p.canceladosNoPeriodo ? "bad" : ""],
+  ];
+  document.getElementById("periodCards").innerHTML = c.map(([k,v,cls,vcls]) =>
+    `<div class="card ${cls}"><div class="k">${k}</div><div class="v ${vcls}">${v}</div></div>`).join("");
+}
+
+function renderCards(d) {
+  const c = [
+    ["Vendas totais", d.totalVendas, "brand", ""],
+    ["Assinaturas ativas", d.assinaturasAtivas, "", ""],
+    ["MRR (receita recorrente)", BRL(d.mrr), "", "small"],
+    ["Recebido no mês", BRL(d.recebidoMes), "", "small ok"],
+    ["Cobranças pagas", d.cobrancasPagas, "", "ok"],
+    ["Pendentes", d.cobrancasPendentes, "", "warn"],
+    ["Vencidas", d.cobrancasVencidas, "", "bad"],
+    ["Liberados no portal", d.liberados, "", "ok"],
+    ["Liberações pendentes", d.liberacoesPendentes, "", "warn"],
+    ["Erros de liberação", d.errosLiberacao, "", d.errosLiberacao ? "bad" : ""],
+  ];
+  document.getElementById("cards").innerHTML = c.map(([k,v,cls,vcls]) =>
+    `<div class="card ${cls}"><div class="k">${k}</div><div class="v ${vcls}">${v}</div></div>`).join("");
+}
+
+function renderChart(serie) {
+  const el = document.getElementById("chart");
+  if (!serie.length) { el.innerHTML = `<p class="muted">Sem dados ainda. As vendas aparecem aqui por mês.</p>`; return; }
+  const W = Math.max(serie.length * 90, 300), H = 200, pad = 34;
+  const maxV = Math.max(...serie.map(s => s.vidasAcumuladas), 1);
+  const bw = (W - pad*2) / serie.length * 0.55;
+  let bars = "", labels = "", line = "", pts = "";
+  const maxMrr = Math.max(...serie.map(s => s.mrr), 1);
+  serie.forEach((s, i) => {
+    const x = pad + (i + 0.5) * (W - pad*2) / serie.length;
+    const h = (s.vidasAcumuladas / maxV) * (H - pad*2);
+    const y = H - pad - h;
+    bars += `<rect x="${x-bw/2}" y="${y}" width="${bw}" height="${h}" rx="4" fill="#0ea5a5"><title>${s.vidasAcumuladas} vidas</title></rect>`;
+    bars += `<text x="${x}" y="${y-6}" text-anchor="middle" font-size="11" font-weight="700" fill="#0b7d7d">${s.vidasAcumuladas}</text>`;
+    labels += `<text x="${x}" y="${H-12}" text-anchor="middle" font-size="11" fill="#64748b">${fmtMes(s.mes)}</text>`;
+    const ly = H - pad - (s.mrr / maxMrr) * (H - pad*2);
+    pts += `${x},${ly} `;
+    line += `<circle cx="${x}" cy="${ly}" r="3" fill="#2563eb"><title>MRR ${BRL(s.mrr)}</title></circle>`;
+  });
+  el.innerHTML = `
+    <div style="display:flex;gap:18px;font-size:12px;color:var(--muted);margin-bottom:8px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:#0ea5a5;border-radius:2px"></span> Vidas acumuladas</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:#2563eb;border-radius:50%"></span> MRR (linha)</span>
+    </div>
+    <div style="overflow-x:auto"><svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:100%">
+      <polyline points="${pts.trim()}" fill="none" stroke="#2563eb" stroke-width="2" opacity=".7"/>
+      ${bars}${line}${labels}
+    </svg></div>`;
+}
+
+function filtrar() {
+  const q = (document.getElementById("busca").value || "").toLowerCase().replace(/\D/g,"");
+  const qn = (document.getElementById("busca").value || "").toLowerCase();
+  const fp = document.getElementById("fpag").value, fl = document.getElementById("flib").value;
+  const rows = VENDAS.filter(v => {
+    if (fp && v.status_pagamento !== fp) return false;
+    if (fl && v.status_liberacao !== fl) return false;
+    if (qn) { const nome = v.titular_nome.toLowerCase(); if (!nome.includes(qn) && !(q && v.titular_cpf.includes(q))) return false; }
+    return true;
+  });
+  renderVendas(rows);
+}
+
+function renderVendas(rows) {
+  const tb = document.getElementById("vendas");
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="8" class="muted">Nenhuma venda encontrada.</td></tr>`; return; }
+  tb.innerHTML = rows.map(v => {
+    const podeLiberar = (v.status_pagamento==="confirmado"||v.status_pagamento==="recebido") && v.status_liberacao!=="liberado" && v.status_liberacao!=="bloqueado";
+    const linkBtn = v.primeira_cobranca_url ? `<a class="btn sm" href="${v.primeira_cobranca_url}" target="_blank">Pagar</a>` : "—";
+    let acoes = "";
+    if (podeLiberar) acoes += `<button class="btn sm primary" onclick="liberar(${v.id},this)">Liberar</button> `;
+    else if (v.status_liberacao==="erro") acoes += `<button class="btn sm" onclick="liberar(${v.id},this)">Repetir</button> `;
+    if (v.status_liberacao==="liberado" && !v.bloqueado) acoes += `<button class="btn sm" onclick="abrirBloqueio(${v.id})">Bloquear</button> `;
+    if (v.bloqueado) acoes += `<button class="btn sm primary" onclick="desbloquear(${v.id},this)">Desbloquear</button> `;
+    const assinBadge = v.assinatura_status==="cancelada" ? ` <span class="badge gray">assinatura cancelada</span>` : "";
+    return `<tr>
+      <td class="mono">${v.id}</td>
+      <td><a href="#" onclick="detalhe(${v.id});return false">${v.titular_nome}</a><div class="muted" style="font-size:12px">${v.tipo_pessoa==="juridica" ? (v.qtd_vidas||v.qtd_dependentes)+" vidas" : v.qtd_dependentes+" dep."}${v.vendedor?" · "+v.vendedor:""}</div></td>
+      <td>${PLANO_NOME[v.tipo_plano]||v.tipo_plano}${v.tipo_pessoa==="juridica"?" 🏢":""}</td>
+      <td>${BRL(v.valor)}</td>
+      <td>${badge(PAG_BADGE, v.status_pagamento)}</td>
+      <td>${badge(LIB_BADGE, v.status_liberacao)}${v.protheus_matric?`<div class="muted mono" style="font-size:11px">${v.protheus_matric}</div>`:""}${assinBadge}</td>
+      <td>${linkBtn}</td>
+      <td class="right" style="white-space:nowrap">${acoes||"—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderInadimplencia(d) {
+  const nav = document.getElementById("navInad");
+  nav.innerHTML = d.clientes ? `<span class="navbadge">${d.clientes}</span>` : "";
+  document.getElementById("inadResumo").textContent =
+    d.clientes ? `${d.clientes} cliente(s) com cobrança vencida · ${BRL(d.total_em_risco)} em risco` : "";
+  const tb = document.getElementById("inadimplencia");
+  if (!d.lista.length) { tb.innerHTML = `<tr><td colspan="7" class="muted">Nenhuma cobrança vencida. 🎉</td></tr>`; return; }
+  tb.innerHTML = d.lista.map(r => `<tr>
+    <td><a href="#" onclick="detalhe(${r.venda_id});return false">${r.titular_nome}</a></td>
+    <td>${PLANO_NOME[r.tipo_plano]||r.tipo_plano}</td>
+    <td>${r.qtd_vencidas}</td>
+    <td><b style="color:${r.dias_atraso>30?'var(--bad)':'var(--warn)'}">${r.dias_atraso} dias</b></td>
+    <td><b>${BRL(r.valor_em_risco)}</b></td>
+    <td>${r.bloqueado?'<span class="badge red">Bloqueado</span>':'<span class="badge amber">Ativo</span>'}</td>
+    <td class="right">${r.bloqueado?"":`<button class="btn sm" onclick="abrirBloqueio(${r.venda_id})">Bloquear</button>`}</td>
+  </tr>`).join("");
+}
+
+function renderChurn(d) {
+  document.getElementById("churnResumo").textContent = `${d.canceladas} cancelamento(s) no período · taxa de churn ${d.taxaChurn}%`;
+  const box = document.getElementById("churnBox");
+  if (!d.canceladas) { box.innerHTML = `<p class="muted" style="margin:0">Nenhum cancelamento no período.</p>`; return; }
+  const motivos = d.porMotivo.map(m => `<span class="badge gray" style="margin-right:6px">${META.motivosBloqueio?.[m.motivo]||m.motivo}: ${m.n}</span>`).join("");
+  const lista = d.lista.map(v => `<tr><td>${fmtData(v.assinatura_cancelada_em)}</td><td>${v.titular_nome}</td><td>${PLANO_NOME[v.tipo_plano]||v.tipo_plano}</td><td>${BRL(v.valor)}</td><td>${META.motivosBloqueio?.[v.bloqueio_motivo]||v.bloqueio_motivo||"—"}</td></tr>`).join("");
+  box.innerHTML = `
+    <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:12px">
+      <div><div class="k muted" style="font-size:12px">CANCELAMENTOS</div><div style="font-size:22px;font-weight:800">${d.canceladas}</div></div>
+      <div><div class="k muted" style="font-size:12px">TAXA DE CHURN</div><div style="font-size:22px;font-weight:800;color:${d.taxaChurn>5?'var(--bad)':'var(--ink)'}">${d.taxaChurn}%</div></div>
+      <div style="align-self:center">${motivos}</div>
+    </div>
+    <table><thead><tr><th>Data</th><th>Titular</th><th>Plano</th><th>Valor</th><th>Motivo</th></tr></thead><tbody>${lista}</tbody></table>`;
+}
+
+function renderCobrancas(rows) {
+  const tb = document.getElementById("cobrancas");
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="6" class="muted">Nenhuma cobrança registrada.</td></tr>`; return; }
+  tb.innerHTML = rows.map(c => `<tr>
+    <td>${fmtData(c.due_date)}</td><td>${c.titular_nome||"—"}</td>
+    <td>${META.billingTypes?.[c.billing_type]||c.billing_type||"—"}</td>
+    <td>${BRL(c.value)}</td><td>${badge(COB_BADGE, c.status)}</td>
+    <td>${c.invoice_url?`<a href="${c.invoice_url}" target="_blank">abrir</a>`:"—"}</td>
+  </tr>`).join("");
+}
+
+async function liberar(id, btn) {
+  btn.disabled = true; btn.textContent = "Liberando…";
+  try { const r = await api(`/api/vendas/${id}/liberar`, { method:"POST" }); if (r.erro) throw new Error(r.erro); await carregar(); }
+  catch (e) { alert("Falha na liberação: " + e.message); btn.disabled=false; btn.textContent="Repetir"; }
+}
+
+async function desbloquear(id, btn) {
+  if (!confirm("Desbloquear este beneficiário no portal? Use quando o pagamento foi regularizado.")) return;
+  btn.disabled = true; btn.textContent = "Desbloqueando…";
+  try { const r = await api(`/api/vendas/${id}/desbloquear`, { method:"POST" }); if (r.erro) throw new Error(r.erro); await carregar(); }
+  catch (e) { alert("Falha ao desbloquear: " + e.message); btn.disabled=false; btn.textContent="Desbloquear"; }
+}
+
+function abrirBloqueio(id) {
+  const opts = Object.entries(META.motivosBloqueio||{}).map(([k,v])=>`<option value="${k}">${v}</option>`).join("");
+  document.getElementById("modalBox").innerHTML = `
+    <h2 style="margin-top:0">Bloquear no portal</h2>
+    <p class="muted">O beneficiário deixa de ter acesso à telemedicina. Selecione o motivo:</p>
+    <div class="field"><label>Motivo</label><select id="mbMotivo">${opts}</select></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:400">
+      <input type="checkbox" id="mbCancelar" style="width:auto" checked> Cancelar também a assinatura no Asaas
+    </label>
+    <div class="banner info" style="margin-top:10px">💡 Se você <b>não</b> cancelar a assinatura, o cliente é <b>desbloqueado automaticamente</b> assim que pagar a próxima cobrança.</div>
+    <div style="margin-top:18px" class="right">
+      <button class="btn" onclick="fecharModal()">Cancelar</button>
+      <button class="btn primary" onclick="confirmarBloqueio(${id},this)">Confirmar bloqueio</button>
+    </div>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+
+async function confirmarBloqueio(id, btn) {
+  btn.disabled = true; btn.textContent = "Processando…";
+  const motivo = document.getElementById("mbMotivo").value;
+  const cancelar = document.getElementById("mbCancelar").checked;
+  try {
+    if (cancelar) { const r = await api(`/api/vendas/${id}/cancelar`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ bloquear:true, motivo }) }); if (r.erro) throw new Error(r.erro); }
+    else { const r = await api(`/api/vendas/${id}/bloquear`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ motivo }) }); if (r.erro) throw new Error(r.erro); }
+    fecharModal(); await carregar();
+  } catch (e) { alert("Falha: " + e.message); btn.disabled=false; btn.textContent="Confirmar bloqueio"; }
+}
+
+async function detalhe(id) {
+  const v = await api(`/api/vendas/${id}`);
+  const deps = v.dependentes.map(d => `<li>${d.nome} — ${META.graus?.[d.grau_parentesco]||d.grau_parentesco} ${d.liberado?'<span class="badge green">liberado</span>':''} ${d.protheus_erro?`<span class="badge red">erro</span>`:''}</li>`).join("") || "<li class='muted'>Sem dependentes</li>";
+  const cob = v.cobrancas.map(c => `<tr><td>${fmtData(c.due_date)}</td><td>${BRL(c.value)}</td><td>${badge(COB_BADGE,c.status)}</td></tr>`).join("");
+  document.getElementById("modalBox").innerHTML = `
+    <h2 style="margin-top:0">${v.titular_nome}</h2>
+    <p class="muted mono">${v.tipo_pessoa==="juridica"?"CNPJ "+(v.cnpj||v.titular_cpf):"CPF "+v.titular_cpf} · ${PLANO_NOME[v.tipo_plano]}${v.tipo_pessoa==="juridica"?" ("+(v.qtd_vidas||v.dependentes.length)+" vidas)":""} · ${BRL(v.valor)}/mês ${v.vendedor?"· vend. "+v.vendedor:""}</p>
+    <p>Pagamento: ${badge(PAG_BADGE,v.status_pagamento)} &nbsp; Liberação: ${badge(LIB_BADGE,v.status_liberacao)} ${v.assinatura_status==="cancelada"?'<span class="badge gray">assinatura cancelada</span>':''}</p>
+    ${v.liberacao_erro?`<div class="banner warn">${v.liberacao_erro}</div>`:""}
+    ${v.bloqueio_erro?`<div class="banner warn">Erro no bloqueio: ${v.bloqueio_erro}</div>`:""}
+    ${v.protheus_matric?`<p>Matrícula portal: <b class="mono">${v.protheus_matric}</b></p>`:""}
+    ${v.bloqueado?`<p>🔒 Bloqueado em ${fmtData(v.bloqueio_data)} — ${META.motivosBloqueio?.[v.bloqueio_motivo]||v.bloqueio_motivo} <button class="btn sm primary" style="margin-left:8px" onclick="desbloquear(${v.id},this)">Desbloquear</button></p>`:""}
+    ${v.desbloqueio_em?`<p class="muted">✅ Desbloqueado em ${fmtData(v.desbloqueio_em)}</p>`:""}
+    <h3 style="margin-bottom:6px">${v.tipo_pessoa==="juridica"?"Vidas (colaboradores)":"Dependentes"}</h3><ul>${deps}</ul>
+    ${cob?`<h3 style="margin-bottom:6px">Cobranças</h3><table>${cob}</table>`:""}
+    <div style="margin-top:18px" class="right"><button class="btn" onclick="fecharModal()">Fechar</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); }
+document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
+
+// abre a view da âncora (ex.: #inad) ou a visão geral
+showView(["geral","vendas","inad","churn","cobr"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "geral");
+carregar();
+setInterval(carregar, 30000);
+</script>
+</body>
+</html>

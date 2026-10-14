@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Banneg Telemedicina — Entrar</title>
+<link rel="stylesheet" href="styles.css" />
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .login {
+    background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 32px;
+    width: 100%; max-width: 380px; box-shadow: 0 10px 30px rgba(15,23,42,.12);
+  }
+  .brand { text-align: center; margin-bottom: 22px; }
+  .brand .n { font-size: 24px; font-weight: 800; color: var(--brand-d); }
+  .brand .s { color: var(--muted); font-size: 14px; }
+  .login .field { margin-bottom: 14px; }
+  .erro { background:#fee2e2; color:#b91c1c; padding:10px 12px; border-radius:9px; font-size:14px; margin-bottom:14px; display:none; }
+</style>
+</head>
+<body>
+  <form class="login" id="form" onsubmit="return false">
+    <div class="brand">
+      <div class="n">Banneg Telemedicina</div>
+      <div class="s">Acesso ao painel</div>
+    </div>
+    <div class="erro" id="erro"></div>
+    <div class="field"><label>Usuário</label><input id="login" autofocus autocomplete="username" /></div>
+    <div class="field"><label>Senha</label><input id="senha" type="password" autocomplete="current-password" /></div>
+    <button class="btn primary" id="btn" type="submit" style="width:100%;justify-content:center;padding:11px;margin-top:6px">Entrar</button>
+  </form>
+<script>
+const form = document.getElementById("form");
+const erro = document.getElementById("erro");
+async function entrar() {
+  erro.style.display = "none";
+  const btn = document.getElementById("btn");
+  btn.disabled = true; btn.textContent = "Entrando…";
+  try {
+    const r = await fetch("/api/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ login: login.value.trim(), senha: senha.value }),
+    }).then(r => r.json());
+    if (r.erro) throw new Error(r.erro);
+    location.href = "/";
+  } catch (e) {
+    erro.textContent = e.message; erro.style.display = "block";
+    btn.disabled = false; btn.textContent = "Entrar";
+  }
+}
+form.addEventListener("submit", entrar);
+</script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+{
+  "name": "banneg-telemed",
+  "version": "1.0.0",
+  "description": "Sistema Banneg Telemedicina - vendas, cobranças (Asaas) e liberação no portal (TOTVS Protheus PLS)",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning --env-file=.env src/server.js",
+    "dev": "node --disable-warning=ExperimentalWarning --env-file=.env --watch src/server.js",
+    "demo": "node --disable-warning=ExperimentalWarning --env-file=.env src/seed-demo.js",
+    "reset": "node --disable-warning=ExperimentalWarning --env-file=.env src/reset.js"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}
