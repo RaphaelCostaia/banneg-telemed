@@ -11,7 +11,7 @@
   .co-wrap { max-width: 520px; margin: 0 auto; padding: 0 0 40px; }
   .co-head { background: linear-gradient(135deg, var(--brand-d), var(--brand)); color: #fff; padding: 26px 20px 22px; text-align: center; }
   .co-head .logo { font-weight: 800; font-size: 22px; letter-spacing: .3px; }
-  .co-head .sub { opacity: .9; font-size: 14px; margin-top: 4px; }
+  .co-head .sub { color: #ffffff; opacity: 1; font-size: 14px; margin-top: 4px; }
   .co-card { background: #fff; margin: 14px; border-radius: 16px; border: 1px solid var(--line); padding: 18px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
   .co-card h3 { margin: 0 0 12px; font-size: 15px; }
   .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
@@ -20,9 +20,10 @@
   .opt .n { font-weight: 800; }
   .opt .p { color: var(--brand-d); font-weight: 800; font-size: 18px; margin-top: 2px; }
   .opt .s { font-size: 11px; color: var(--muted); }
-  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
   label { font-size: 13px; font-weight: 600; color: #334155; }
-  input, select { padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-family: inherit; background: #fff; color: #0f172a; }
+  input, select { width: 100%; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-family: inherit; background: #fff; color: #0f172a; }
+  input[type=date] { min-height: 46px; }
   input::placeholder { color: #94a3b8; }
   select option { color: #0f172a; background: #fff; }
   input:focus, select:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
