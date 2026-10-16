@@ -32,7 +32,7 @@
   .total .v { font-size: 26px; font-weight: 800; color: var(--brand-d); }
   .total .d { font-size: 12px; color: var(--muted); }
   .consent { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: #475569; margin: 6px 2px 0; }
-  .consent input { width: auto; margin-top: 2px; }
+  .consent input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: #0ea5a5; cursor: pointer; }
   .cta { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
   .cta:disabled { opacity: .6; }
   .dep { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--soft); }
@@ -72,9 +72,7 @@
       </div>
       <div class="field"><label>Nome da mãe</label><input id="t_mae" placeholder="Nome completo da mãe" /></div>
       <div class="field"><label>E-mail</label><input id="t_email" type="email" placeholder="voce@email.com" /></div>
-      <div class="field"><label>Celular (WhatsApp)</label>
-        <div class="row2"><input id="t_ddd" inputmode="numeric" placeholder="DDD" /><input id="t_tel" inputmode="numeric" placeholder="Número" /></div>
-      </div>
+      <div class="field"><label>Celular (WhatsApp)</label><input id="t_celular" inputmode="numeric" placeholder="DDD + número — ex: 17 99119 2822" /></div>
     </div>
 
     <div class="co-card" id="boxDeps" hidden>
@@ -174,8 +172,10 @@ function erro(msg) { const e = document.getElementById("erro"); e.textContent = 
 
 async function enviar() {
   document.getElementById("erro").style.display = "none";
+  const cel = val("t_celular").replace(/\D/g, "");
   const t = { nome: val("t_nome"), cpf: val("t_cpf"), nascimento: val("t_nasc"), sexo: val("t_sexo"),
-    estciv: val("t_estciv"), mae: val("t_mae"), email: val("t_email"), ddd: val("t_ddd"), telefone: val("t_tel") };
+    estciv: val("t_estciv"), mae: val("t_mae"), email: val("t_email"),
+    ddd: cel.slice(0, 2), telefone: cel.slice(2) };
   if (!t.nome || t.cpf.replace(/\D/g, "").length !== 11) return erro("Confira seu nome e CPF (11 dígitos).");
   if (!t.nascimento || !t.sexo || !t.estciv || !t.mae) return erro("Preencha nascimento, sexo, estado civil e nome da mãe.");
   for (const [i, d] of deps.entries()) if (!d.nome || !d.nascimento) return erro(`Preencha nome e nascimento do dependente ${i + 1}.`);
