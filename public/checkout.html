@@ -201,7 +201,10 @@ function sucesso(r) {
     <h2 style="margin-top:0">✅ Quase lá!</h2>
     <p>Seu plano <b>${r.plano}</b> — <b>${BRL(r.valor)}/mês</b>.</p>
     ${pag}
-    <p class="muted" style="font-size:13px;margin-top:14px">Assim que o pagamento for confirmado, seu acesso à Telemedicina é liberado automaticamente e você recebe os dados de acesso. 💙</p>`;
+    <div class="co-card" style="margin:14px 0 0;padding:14px;background:#f0fdfa;border-color:#99f6e4">
+      <p style="margin:0;font-size:14px">📩 <b>Confira seu e-mail após o pagamento.</b></p>
+      <p class="muted" style="margin:6px 0 0;font-size:13px">Você recebe a confirmação do pagamento no seu e-mail (olhe também o spam). Assim que confirmado, seu acesso à Telemedicina é liberado e os dados de acesso chegam até você. 💙</p>
+    </div>`;
   document.getElementById("modalBg").classList.add("show");
 }
 function copiarPix() {
