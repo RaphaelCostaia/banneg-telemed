@@ -851,8 +851,14 @@ app.post("/api/asaas/sincronizar", async (req, res) => {
   catch (e) { res.status(500).json({ erro: e.message }); }
 });
 
-app.get("/api/asaas/status", (req, res) =>
-  res.json({ configurado: asaas.configured, baseUrl: asaas.baseUrl, ultimaSync, intervaloMin: SYNC_MIN }));
+app.get("/api/asaas/status", (req, res) => {
+  const k = process.env.ASAAS_API_KEY || "";
+  res.json({
+    configurado: asaas.configured, baseUrl: asaas.baseUrl, ultimaSync, intervaloMin: SYNC_MIN,
+    // diagnóstico (não expõe o segredo): confirma se a chave chegou íntegra
+    keyPrefix: k.slice(0, 11), keyLen: k.length, keyOk: k.startsWith("$aact_") && k.includes("::$aach_"),
+  });
+});
 
 // =====================================================================
 //  Relatórios e exportação
