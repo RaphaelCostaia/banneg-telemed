@@ -16,6 +16,7 @@
     <nav class="side-nav">
       <a data-view="geral" class="active" onclick="showView('geral')"><span class="ico">📊</span> Visão geral</a>
       <a href="/nova-venda.html"><span class="ico">➕</span> Nova venda</a>
+      <a onclick="abrirLinks()"><span class="ico">🔗</span> Links de pagamento</a>
       <div class="sep"></div>
       <a data-view="vendas" onclick="showView('vendas')"><span class="ico">👥</span> Vendas e clientes</a>
       <a data-view="inad" onclick="showView('inad')"><span class="ico">⚠️</span> Inadimplência <span id="navInad"></span></a>
@@ -507,6 +508,41 @@ async function detalhe(id) {
     ${cob?`<h3 style="margin-bottom:6px">Cobranças</h3><table>${cob}</table>`:""}
     <div style="margin-top:18px" class="right"><button class="btn" onclick="fecharModal()">Fechar</button></div>`;
   document.getElementById("modalBg").classList.add("show");
+}
+function linksCheckout() {
+  const origin = location.origin;
+  const arr = [{ nome: "Cliente escolhe o plano", url: origin + "/checkout", obs: "o cliente escolhe Individual ou Familiar na página" }];
+  Object.values(META.planos || {}).forEach(p =>
+    arr.push({ nome: p.nome, url: origin + "/checkout?plano=" + p.id, obs: "abre já no plano " + p.nome }));
+  return arr;
+}
+function abrirLinks() {
+  const rows = linksCheckout().map((l, i) => `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <b>${l.nome}</b><span class="muted" style="font-size:12px">${l.obs}</span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <input id="lnk${i}" class="mono" readonly value="${l.url}" style="flex:1;min-width:200px;font-size:13px" onclick="this.select()" />
+        <button class="btn sm primary" onclick="copiarLink('lnk${i}',this)">Copiar</button>
+        <a class="btn sm" href="${l.url}" target="_blank">Abrir</a>
+      </div>
+    </div>`).join("");
+  document.getElementById("modalBox").innerHTML = `
+    <h2 style="margin-top:0">🔗 Links de pagamento</h2>
+    <p class="muted">Envie o link ao cliente. Ele preenche os dados e paga por cartão, Pix ou boleto. A telemedicina é liberada em até 24h após a confirmação do pagamento.</p>
+    ${rows}
+    <div style="margin-top:16px" class="right"><button class="btn" onclick="fecharModal()">Fechar</button></div>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+async function copiarLink(inputId, btn) {
+  const el = document.getElementById(inputId);
+  try {
+    if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(el.value);
+    else { el.focus(); el.select(); document.execCommand("copy"); }
+  } catch { el.focus(); el.select(); document.execCommand("copy"); }
+  const t = btn.textContent; btn.textContent = "Copiado ✓"; btn.disabled = true;
+  setTimeout(() => { btn.textContent = t; btn.disabled = false; }, 1500);
 }
 function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); }
 document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
