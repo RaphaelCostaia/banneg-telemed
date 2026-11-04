@@ -98,7 +98,9 @@ function ensureColumn(tabela, coluna, definicao) {
   const cols = db.prepare(`PRAGMA table_info(${tabela})`).all();
   if (!cols.some((c) => c.name === coluna)) {
     db.exec(`ALTER TABLE ${tabela} ADD COLUMN ${coluna} ${definicao}`);
+    return true; // coluna recém-criada
   }
+  return false;
 }
 ensureColumn("vendas", "assinatura_status", "TEXT DEFAULT 'ativa'"); // ativa | cancelada
 ensureColumn("vendas", "assinatura_cancelada_em", "TEXT");
@@ -114,6 +116,18 @@ ensureColumn("vendas", "razao_social", "TEXT");
 ensureColumn("vendas", "qtd_vidas", "INTEGER");
 // Idempotência da integração (ex.: id da conversa/negócio no N8N)
 ensureColumn("vendas", "external_id", "TEXT");
+// Entrega garantida do callback de pagamento ao N8N (reenvia pelo polling até confirmar)
+if (ensureColumn("vendas", "n8n_notificado_pago", "INTEGER NOT NULL DEFAULT 0")) {
+  // backfill: vendas que já existiam são tratadas como já notificadas, para o primeiro
+  // polling pós-deploy NÃO reenviar pagamento_confirmado de clientes antigos (N8N não deduplica).
+  // Casos pontuais (ex.: a que não disparou) são reenviados pelo botão "Reenviar webhook".
+  db.exec("UPDATE vendas SET n8n_notificado_pago=1");
+}
+// Exclusão lógica (mantém auditoria): venda some das listas mas o registro fica
+ensureColumn("vendas", "excluida", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("vendas", "excluida_em", "TEXT");
+ensureColumn("vendas", "excluida_por", "TEXT");
+ensureColumn("vendas", "excluida_motivo", "TEXT");
 
 export function logEvento(tipo, referencia, detalhe) {
   try {

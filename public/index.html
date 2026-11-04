@@ -128,7 +128,7 @@
 const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtData = (ymd) => ymd ? ymd.split("-").reverse().join("/") : "—";
 const fmtMes = (ym) => { const [a,m]=ym.split("-"); return ["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m]+"/"+a.slice(2); };
-let META = {}, VENDAS = [];
+let META = {}, VENDAS = [], ME = {};
 
 const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças" };
 const PLANO_NOME = { individual: "Individual", familiar: "Familiar", empresa: "Empresa", unitario: "Individual", casal: "Casal" };
@@ -156,6 +156,7 @@ async function api(url, opts) {
 
 async function carregar() {
   const me = await api("/api/me");
+  ME = me;
   document.getElementById("userbox").innerHTML =
     `<div>👤 <b>${me.nome}</b></div><a href="#" onclick="sair();return false">Sair</a>`;
   META = await api("/api/meta");
@@ -304,6 +305,8 @@ function renderVendas(rows) {
     else if (v.status_liberacao==="erro") acoes += `<button class="btn sm" onclick="liberar(${v.id},this)">Repetir</button> `;
     if (v.status_liberacao==="liberado" && !v.bloqueado) acoes += `<button class="btn sm" onclick="abrirBloqueio(${v.id})">Bloquear</button> `;
     if (v.bloqueado) acoes += `<button class="btn sm primary" onclick="desbloquear(${v.id},this)">Desbloquear</button> `;
+    if (ME.papel==="admin" && (v.status_pagamento==="confirmado"||v.status_pagamento==="recebido")) acoes += `<button class="btn sm" title="Reenviar o aviso de pagamento ao N8N (boas-vindas/follow-up)" onclick="reenviarWebhook(${v.id},this)">↻ N8N</button> `;
+    if (ME.papel==="admin") acoes += `<button class="btn sm" style="color:var(--bad);border-color:#fecaca" onclick="excluirVenda(${v.id},'${(v.titular_nome||'').replace(/'/g,"\\'")}')">Excluir</button> `;
     const assinBadge = v.assinatura_status==="cancelada" ? ` <span class="badge gray">assinatura cancelada</span>` : "";
     return `<tr>
       <td class="mono">${v.id}</td>
@@ -373,6 +376,29 @@ async function desbloquear(id, btn) {
   btn.disabled = true; btn.textContent = "Desbloqueando…";
   try { const r = await api(`/api/vendas/${id}/desbloquear`, { method:"POST" }); if (r.erro) throw new Error(r.erro); await carregar(); }
   catch (e) { alert("Falha ao desbloquear: " + e.message); btn.disabled=false; btn.textContent="Desbloquear"; }
+}
+
+async function reenviarWebhook(id, btn) {
+  if (!confirm(`Reenviar o aviso de pagamento da venda #${id} ao N8N?\n\nUse quando a automação (boas-vindas/saída do follow-up) não disparou. Evite repetir sem necessidade — pode reenviar a mensagem ao cliente.`)) return;
+  btn.disabled = true; const txt = btn.textContent; btn.textContent = "Enviando…";
+  try {
+    const r = await api(`/api/vendas/${id}/reenviar-webhook`, { method:"POST" });
+    if (r.erro) throw new Error(r.erro);
+    alert(r.entregue ? "Webhook reenviado com sucesso ao N8N." : "O N8N não confirmou o recebimento (verifique URL/token do N8N).");
+  } catch (e) { alert("Falha ao reenviar: " + e.message); }
+  finally { btn.disabled = false; btn.textContent = txt; }
+}
+
+async function excluirVenda(id, nome) {
+  if (!confirm(`Excluir a venda #${id} — ${nome}?\n\nA venda sai das listas e relatórios, mas FICA registrada na auditoria.\nSe houver assinatura ativa no Asaas, ela será CANCELADA (o cliente para de ser cobrado).\nA Medicar NÃO é bloqueada por aqui.`)) return;
+  const motivo = prompt("Motivo da exclusão (fica na auditoria):", "");
+  if (motivo === null) return; // cancelou o prompt
+  try {
+    const r = await api(`/api/vendas/${id}/excluir`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ motivo }) });
+    if (r.erro) throw new Error(r.erro);
+    alert(r.assinatura_cancelada ? "Venda excluída. Assinatura no Asaas cancelada." : "Venda excluída.");
+    await carregar();
+  } catch (e) { alert("Falha ao excluir: " + e.message); }
 }
 
 function abrirBloqueio(id) {

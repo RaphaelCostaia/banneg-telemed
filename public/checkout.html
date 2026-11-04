@@ -60,6 +60,11 @@
     </div>
 
     <div class="co-card">
+      <h3>Forma de pagamento</h3>
+      <div class="pick" id="formas"></div>
+    </div>
+
+    <div class="co-card">
       <h3>Seus dados</h3>
       <div class="field"><label>Nome completo</label><input id="t_nome" placeholder="Nome e sobrenome" /></div>
       <div class="row2">
@@ -96,7 +101,8 @@
 const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const qs = new URLSearchParams(location.search);
 let META = {}, planoSel = null, deps = [];
-const forma = "CREDIT_CARD"; // apenas cartão
+let forma = "CREDIT_CARD"; // cartão (default) | PIX | BOLETO
+const leadId = (qs.get("lead") || "").trim(); // id do lead (remoteJid) p/ casar o follow-up
 const val = (id) => document.getElementById(id).value.trim();
 
 async function init() {
@@ -104,16 +110,30 @@ async function init() {
   fill("t_sexo", META.sexos, true);
   fill("t_estciv", META.estadosCivis, true);
 
-  document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
-    `<div class="opt" data-id="${p.id}" onclick="selPlano('${p.id}')">
-       <div class="n">${p.nome}</div><div class="p">${BRL(p.preco.CREDIT_CARD)}</div>
-       <div class="s">por mês no cartão</div></div>`).join("");
+  document.getElementById("formas").innerHTML = Object.entries(META.formasPagamento).map(([k, v]) =>
+    `<div class="opt${k === forma ? " sel" : ""}" data-k="${k}" onclick="selForma('${k}')">
+       <div class="n">${v}</div></div>`).join("");
+  renderPlanos();
 
   const pQ = qs.get("plano");
   selPlano(META.planos[pQ] ? pQ : "individual");
 
   document.getElementById("addDep").onclick = addDep;
   document.getElementById("submit").onclick = enviar;
+}
+function renderPlanos() {
+  const lbl = (META.formasPagamento?.[forma] || "").toLowerCase();
+  document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
+    `<div class="opt${planoSel && planoSel.id === p.id ? " sel" : ""}" data-id="${p.id}" onclick="selPlano('${p.id}')">
+       <div class="n">${p.nome}</div><div class="p">${BRL(p.preco[forma])}</div>
+       <div class="s">por mês · ${lbl}</div></div>`).join("");
+}
+function selForma(k) {
+  if (!META.formasPagamento[k]) return;
+  forma = k;
+  document.querySelectorAll("#formas .opt").forEach(e => e.classList.toggle("sel", e.dataset.k === k));
+  renderPlanos();
+  total();
 }
 function fill(id, map, blank) {
   document.getElementById(id).innerHTML = (blank ? `<option value="">—</option>` : "") +
@@ -166,7 +186,7 @@ function total() {
   if (!planoSel) return;
   const v = calcValor(); const vidas = 1 + deps.length;
   document.getElementById("total").textContent = v == null ? "—" : BRL(v);
-  document.getElementById("totalDet").textContent = `${vidas} vida${vidas > 1 ? "s" : ""} · ${forma === "PIX" ? "Pix" : "Cartão"}`;
+  document.getElementById("totalDet").textContent = `${vidas} vida${vidas > 1 ? "s" : ""} · ${META.formasPagamento?.[forma] || forma}`;
 }
 function erro(msg) { const e = document.getElementById("erro"); e.textContent = msg; e.style.display = "block"; window.scrollTo(0, 0); }
 
@@ -186,7 +206,7 @@ async function enviar() {
   try {
     const r = await fetch("/api/checkout", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tipo_plano: planoSel.id, billingType: forma, consentimento: true, titular: t, dependentes: deps }),
+      body: JSON.stringify({ tipo_plano: planoSel.id, billingType: forma, consentimento: true, titular: t, dependentes: deps, externalId: leadId || undefined }),
     }).then(r => r.json());
     if (r.erro) throw new Error(r.erro);
     sucesso(r);
@@ -194,16 +214,25 @@ async function enviar() {
 }
 
 function sucesso(r) {
+  const label = r.billingType === "PIX" ? "💠 Pagar com Pix" : r.billingType === "BOLETO" ? "📄 Ver boleto" : "💳 Pagar com cartão";
   const pag = r.paymentLink
-    ? `<a class="cta" style="display:block;text-align:center;text-decoration:none" href="${r.paymentLink}" target="_blank">💳 Pagar com cartão</a>`
+    ? `<a class="cta" style="display:block;text-align:center;text-decoration:none" href="${r.paymentLink}" target="_blank">${label}</a>`
     : `<p class="muted">O link de pagamento será gerado em instantes.</p>`;
+  const pix = r.pixCopiaECola
+    ? `<div class="co-card" style="margin:12px 0 0;padding:14px">
+         <p style="margin:0 0 6px;font-size:13px;font-weight:700">Pix copia e cola</p>
+         <p id="pixcode" style="word-break:break-all;font-size:12px;font-family:ui-monospace,Consolas,monospace;background:#f8fafc;padding:10px;border-radius:8px;margin:0">${r.pixCopiaECola}</p>
+         <button class="linkbtn" type="button" onclick="copiarPix()" style="margin-top:8px">Copiar código Pix</button>
+       </div>`
+    : "";
   document.getElementById("modalBox").innerHTML = `
     <h2 style="margin-top:0">✅ Quase lá!</h2>
     <p>Seu plano <b>${r.plano}</b> — <b>${BRL(r.valor)}/mês</b>.</p>
     ${pag}
+    ${pix}
     <div class="co-card" style="margin:14px 0 0;padding:14px;background:#f0fdfa;border-color:#99f6e4">
       <p style="margin:0;font-size:14px">📩 <b>Confira seu e-mail após o pagamento.</b></p>
-      <p class="muted" style="margin:6px 0 0;font-size:13px">Você recebe a confirmação do pagamento no seu e-mail (olhe também o spam). Assim que confirmado, seu acesso à Telemedicina é liberado e os dados de acesso chegam até você. 💙</p>
+      <p class="muted" style="margin:6px 0 0;font-size:13px">Você recebe a confirmação do pagamento no seu e-mail (olhe também o spam). Após a confirmação, seu acesso à Telemedicina é liberado em <b>até 24 horas</b> e os dados de acesso chegam até você por e-mail. 💙</p>
     </div>`;
   document.getElementById("modalBg").classList.add("show");
 }

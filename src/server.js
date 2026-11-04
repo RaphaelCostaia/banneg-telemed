@@ -9,6 +9,7 @@ import { PLANOS, getPlano, calcularValor, calcularValorEmpresa, precoPorVidaPME,
 import { seedAdmin, autenticar, criarSessao, obterSessao, destruirSessao, parseCookies, verificarApiKey } from "./auth.js";
 
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "";
+const N8N_WEBHOOK_TOKEN = process.env.N8N_WEBHOOK_TOKEN || "";
 
 const AUTO_BLOQUEAR_VENCIDO = String(process.env.AUTO_BLOQUEAR_VENCIDO || "false").toLowerCase() === "true";
 const SYNC_MIN = Number(process.env.ASAAS_SYNC_MINUTES || 5);
@@ -154,7 +155,7 @@ async function criarVendaPF(b, vendedorNome) {
     }
   }
 
-  const billingType = "CREDIT_CARD"; // apenas cartão de crédito
+  const billingType = FORMAS_PAGAMENTO[b.billingType] ? b.billingType : "CREDIT_CARD"; // cartão | pix | boleto
   const qtdVidas = 1 + dependentes.length;
   const valor = calcularValor(plano.id, billingType, qtdVidas);
   if (valor == null) throw httpErro(400, "Não foi possível calcular o valor para este plano.");
@@ -282,7 +283,7 @@ async function criarVendaEmpresa(req, res) {
       }
     }
 
-    const billingType = "CREDIT_CARD"; // apenas cartão de crédito
+    const billingType = FORMAS_PAGAMENTO[b.billingType] ? b.billingType : "CREDIT_CARD"; // cartão | pix | boleto
     const qtdVidas = vidas.length;
     const porVida = precoPorVidaPME(qtdVidas);
     const cotacao = porVida == null; // acima de 100 vidas
@@ -384,7 +385,7 @@ function upsertCobranca(p, vendaId) {
 
 // Callback para o N8N (fire-and-forget) a cada mudança relevante da venda.
 async function notificarN8N(venda, evento, extra = {}) {
-  if (!N8N_WEBHOOK_URL || !venda) return;
+  if (!N8N_WEBHOOK_URL || !venda) return false;
   const pf = venda.tipo_pessoa !== "juridica";
   const acesso = pf
     ? {
@@ -397,6 +398,11 @@ async function notificarN8N(venda, evento, extra = {}) {
         portal: "Telemedicina Medicar (app ou site)",
         instrucao: "Cada colaborador acessa com o próprio CPF (só números) como login e senha no primeiro acesso.",
       };
+  // Telefone para o N8N casar com a chave de follow-up (followup:<numero>@s.whatsapp.net)
+  const dddDigits = onlyDigits(venda.titular_ddd || "");
+  const telDigits = onlyDigits(venda.titular_telefone || "");
+  const telefoneLocal = dddDigits && telDigits ? dddDigits + telDigits : null; // ex: 11987654321
+  const whatsapp = telefoneLocal ? "55" + telefoneLocal : null; // ex: 5511987654321
   const payload = {
     evento,
     venda_id: venda.id,
@@ -407,6 +413,8 @@ async function notificarN8N(venda, evento, extra = {}) {
     razao_social: venda.razao_social || null,
     documento: pf ? venda.titular_cpf : venda.cnpj,
     email: venda.titular_email || null,
+    telefone: telefoneLocal,
+    whatsapp,
     valor: venda.valor,
     status_pagamento: venda.status_pagamento,
     status_liberacao: venda.status_liberacao,
@@ -416,14 +424,18 @@ async function notificarN8N(venda, evento, extra = {}) {
     ts: new Date().toISOString(),
   };
   try {
-    await fetch(N8N_WEBHOOK_URL, {
+    const headers = { "Content-Type": "application/json" };
+    if (N8N_WEBHOOK_TOKEN) headers["x-banneg-token"] = N8N_WEBHOOK_TOKEN;
+    const resp = await fetch(N8N_WEBHOOK_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(payload),
     });
-    logEvento("n8n_callback", venda.id, { evento });
+    logEvento(resp.ok ? "n8n_callback" : "n8n_callback_falha", venda.id, { evento, status: resp.status });
+    return resp.ok;
   } catch (e) {
     logEvento("n8n_callback_erro", venda.id, { evento, erro: e.message });
+    return false;
   }
 }
 
@@ -435,7 +447,7 @@ app.get("/api/vendas", (req, res) => {
     .prepare(
       `SELECT v.*,
         (SELECT COUNT(*) FROM dependentes d WHERE d.venda_id=v.id) AS qtd_dependentes
-       FROM vendas v ORDER BY v.id DESC`
+       FROM vendas v WHERE v.excluida=0 ORDER BY v.id DESC`
     )
     .all();
   res.json(vendas);
@@ -470,24 +482,24 @@ app.get("/api/dashboard", (req, res) => {
   const de = (req.query.de || `${mesAtual}-01`).slice(0, 10);
   const ate = (req.query.ate || hoje).slice(0, 10);
 
-  const vendasNoPeriodo = num("SELECT COUNT(*) n FROM vendas WHERE date(created_at) BETWEEN ? AND ?", de, ate);
+  const vendasNoPeriodo = num("SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND date(created_at) BETWEEN ? AND ?", de, ate);
   const recebidoNoPeriodo = val(
     `SELECT COALESCE(SUM(value),0) n FROM cobrancas
      WHERE status IN ('RECEIVED','CONFIRMED','RECEIVED_IN_CASH')
        AND date(COALESCE(payment_date, due_date)) BETWEEN ? AND ?`, de, ate);
   const canceladosNoPeriodo = num(
-    "SELECT COUNT(*) n FROM vendas WHERE assinatura_cancelada_em BETWEEN ? AND ?", de, ate);
+    "SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND assinatura_cancelada_em BETWEEN ? AND ?", de, ate);
   const ticketMedio = vendasNoPeriodo
-    ? Number((val("SELECT COALESCE(AVG(valor),0) n FROM vendas WHERE date(created_at) BETWEEN ? AND ?", de, ate)).toFixed(2))
+    ? Number((val("SELECT COALESCE(AVG(valor),0) n FROM vendas WHERE excluida=0 AND date(created_at) BETWEEN ? AND ?", de, ate)).toFixed(2))
     : 0;
 
-  const totalVendas = num("SELECT COUNT(*) n FROM vendas");
+  const totalVendas = num("SELECT COUNT(*) n FROM vendas WHERE excluida=0");
   const assinaturasAtivas = num(
-    "SELECT COUNT(*) n FROM vendas WHERE asaas_subscription_id IS NOT NULL AND assinatura_status='ativa' AND bloqueado=0"
+    "SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND asaas_subscription_id IS NOT NULL AND assinatura_status='ativa' AND bloqueado=0"
   );
   const mrr =
     db.prepare(
-      "SELECT COALESCE(SUM(valor),0) n FROM vendas WHERE asaas_subscription_id IS NOT NULL AND assinatura_status='ativa' AND bloqueado=0"
+      "SELECT COALESCE(SUM(valor),0) n FROM vendas WHERE excluida=0 AND asaas_subscription_id IS NOT NULL AND assinatura_status='ativa' AND bloqueado=0"
     ).get()?.n ?? 0;
 
   const recebidoMes =
@@ -508,13 +520,13 @@ app.get("/api/dashboard", (req, res) => {
   );
 
   const liberacoesPendentes = num(
-    "SELECT COUNT(*) n FROM vendas WHERE status_pagamento IN ('confirmado','recebido') AND status_liberacao!='liberado'"
+    "SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND status_pagamento IN ('confirmado','recebido') AND status_liberacao!='liberado'"
   );
-  const liberados = num("SELECT COUNT(*) n FROM vendas WHERE status_liberacao='liberado'");
-  const errosLiberacao = num("SELECT COUNT(*) n FROM vendas WHERE status_liberacao='erro'");
+  const liberados = num("SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND status_liberacao='liberado'");
+  const errosLiberacao = num("SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND status_liberacao='erro'");
 
   const porPlano = db
-    .prepare("SELECT tipo_plano, COUNT(*) n FROM vendas GROUP BY tipo_plano")
+    .prepare("SELECT tipo_plano, COUNT(*) n FROM vendas WHERE excluida=0 GROUP BY tipo_plano")
     .all();
 
   res.json({
@@ -750,6 +762,67 @@ app.post("/api/vendas/:id/cancelar", async (req, res) => {
   }
 });
 
+// excluir (lógico) a venda — some das listas/relatórios mas FICA registrada na auditoria
+app.post("/api/vendas/:id/excluir", async (req, res) => {
+  try {
+    if (req.usuario?.papel !== "admin")
+      return res.status(403).json({ erro: "Apenas administradores podem excluir vendas." });
+    const vendaId = Number(req.params.id);
+    const venda = qVenda.get(vendaId);
+    if (!venda) return res.status(404).json({ erro: "Venda não encontrada." });
+    if (venda.excluida) return res.status(400).json({ erro: "Venda já excluída." });
+    const motivo = (req.body?.motivo || "").toString().trim();
+    const por = req.usuario?.nome || req.usuario?.login || null;
+
+    // cancela a cobrança recorrente no Asaas (se ativa) para o cliente não seguir sendo cobrado
+    let assinaturaCancelada = false;
+    if (venda.asaas_subscription_id && venda.assinatura_status === "ativa") {
+      try {
+        await asaas.cancelSubscription(venda.asaas_subscription_id);
+        db.prepare("UPDATE vendas SET assinatura_status='cancelada', assinatura_cancelada_em=date('now') WHERE id=?").run(vendaId);
+        assinaturaCancelada = true;
+      } catch (e) {
+        logEvento("excluir_cancelar_assinatura_erro", vendaId, { erro: e.message });
+      }
+    }
+
+    // snapshot completo na auditoria (venda + dependentes) ANTES de ocultar
+    const deps = db.prepare("SELECT * FROM dependentes WHERE venda_id=?").all(vendaId);
+    logEvento("venda_excluida", vendaId, {
+      por, motivo: motivo || null, assinatura_cancelada: assinaturaCancelada,
+      snapshot: { ...venda, assinatura_status: assinaturaCancelada ? "cancelada" : venda.assinatura_status },
+      dependentes: deps,
+    });
+
+    db.prepare(
+      "UPDATE vendas SET excluida=1, excluida_em=datetime('now'), excluida_por=?, excluida_motivo=?, updated_at=datetime('now') WHERE id=?"
+    ).run(por, motivo || null, vendaId);
+
+    res.json({ ok: true, assinatura_cancelada: assinaturaCancelada });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
+// reenviar manualmente o callback de pagamento ao N8N (ex.: venda que não disparou)
+app.post("/api/vendas/:id/reenviar-webhook", async (req, res) => {
+  try {
+    if (req.usuario?.papel !== "admin")
+      return res.status(403).json({ erro: "Apenas administradores podem reenviar o webhook." });
+    const vendaId = Number(req.params.id);
+    const venda = qVenda.get(vendaId);
+    if (!venda) return res.status(404).json({ erro: "Venda não encontrada." });
+    if (!["confirmado", "recebido"].includes(venda.status_pagamento))
+      return res.status(400).json({ erro: "A venda ainda não está paga — nada a reenviar." });
+    const ok = await notificarN8N(venda, "pagamento_confirmado", { origem: "reenvio_manual" });
+    if (ok) db.prepare("UPDATE vendas SET n8n_notificado_pago=1 WHERE id=?").run(vendaId);
+    logEvento("n8n_reenvio_manual", vendaId, { por: req.usuario?.nome || req.usuario?.login || null, ok });
+    res.json({ ok, entregue: ok });
+  } catch (e) {
+    res.status(500).json({ erro: e.message });
+  }
+});
+
 // =====================================================================
 //  Processamento de pagamento (compartilhado por webhook e sincronização)
 // =====================================================================
@@ -769,16 +842,18 @@ async function processarPagamento(payment, origem) {
   upsertCobranca(payment, vendaId);
   if (!vendaId) return { vendaId: null, acao: null };
 
-  const statusAntes = qVenda.get(vendaId)?.status_pagamento;
   db.prepare("UPDATE vendas SET status_pagamento=?, updated_at=datetime('now') WHERE id=?")
     .run(mapPagamento(payment.status), vendaId);
 
   let acao = null;
   if (PAGO.has(payment.status)) {
     const venda = qVenda.get(vendaId);
-    // avisa o N8N do pagamento confirmado só na transição para pago (evita repetir a cada sync)
-    if (venda && !["confirmado", "recebido"].includes(statusAntes)) {
-      await notificarN8N(venda, "pagamento_confirmado", { origem });
+    // avisa o N8N do pagamento confirmado — entrega garantida: só marca como notificado
+    // quando o POST volta OK; enquanto não, o polling reenvia (cobre N8N fora do ar / env
+    // ainda não configurada). O N8N deduplica pelo venda_id, então reenvio é seguro.
+    if (venda && !venda.n8n_notificado_pago) {
+      const ok = await notificarN8N(venda, "pagamento_confirmado", { origem });
+      if (ok) db.prepare("UPDATE vendas SET n8n_notificado_pago=1 WHERE id=?").run(vendaId);
     }
     if (venda && venda.bloqueado) {
       // estava bloqueado por inadimplência e regularizou -> desbloqueia
@@ -823,7 +898,7 @@ app.post("/webhooks/asaas", async (req, res) => {
 async function sincronizarAsaas(origem = "auto") {
   if (!asaas.configured) throw new Error("Asaas não configurado (defina ASAAS_API_KEY).");
   const vendas = db.prepare(
-    "SELECT id, asaas_subscription_id FROM vendas WHERE asaas_subscription_id IS NOT NULL AND assinatura_status='ativa'"
+    "SELECT id, asaas_subscription_id FROM vendas WHERE excluida=0 AND asaas_subscription_id IS NOT NULL AND assinatura_status='ativa'"
   ).all();
 
   let cobrancasVistas = 0;
@@ -918,23 +993,23 @@ app.get("/api/relatorios/churn", (req, res) => {
   const ate = (req.query.ate || hoje).slice(0, 10);
 
   const canceladas = db
-    .prepare("SELECT COUNT(*) n FROM vendas WHERE assinatura_cancelada_em BETWEEN ? AND ?")
+    .prepare("SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND assinatura_cancelada_em BETWEEN ? AND ?")
     .get(de, ate).n;
   const ativasNoInicio = db
-    .prepare("SELECT COUNT(*) n FROM vendas WHERE date(created_at) < ? AND asaas_subscription_id IS NOT NULL")
+    .prepare("SELECT COUNT(*) n FROM vendas WHERE excluida=0 AND date(created_at) < ? AND asaas_subscription_id IS NOT NULL")
     .get(de).n;
   const taxa = ativasNoInicio ? Number(((canceladas / ativasNoInicio) * 100).toFixed(1)) : 0;
 
   const porMotivo = db
     .prepare(
       `SELECT COALESCE(bloqueio_motivo,'—') motivo, COUNT(*) n
-       FROM vendas WHERE assinatura_cancelada_em BETWEEN ? AND ? GROUP BY motivo ORDER BY n DESC`
+       FROM vendas WHERE excluida=0 AND assinatura_cancelada_em BETWEEN ? AND ? GROUP BY motivo ORDER BY n DESC`
     )
     .all(de, ate);
   const lista = db
     .prepare(
       `SELECT id, titular_nome, tipo_plano, valor, assinatura_cancelada_em, bloqueio_motivo
-       FROM vendas WHERE assinatura_cancelada_em BETWEEN ? AND ? ORDER BY assinatura_cancelada_em DESC`
+       FROM vendas WHERE excluida=0 AND assinatura_cancelada_em BETWEEN ? AND ? ORDER BY assinatura_cancelada_em DESC`
     )
     .all(de, ate);
 
@@ -954,7 +1029,7 @@ function sendCsv(res, filename, headers, rows) {
 }
 
 app.get("/api/export/vendas.csv", (req, res) => {
-  const rows = db.prepare(`SELECT v.*, (SELECT COUNT(*) FROM dependentes d WHERE d.venda_id=v.id) qd FROM vendas v ORDER BY v.id`).all();
+  const rows = db.prepare(`SELECT v.*, (SELECT COUNT(*) FROM dependentes d WHERE d.venda_id=v.id) qd FROM vendas v WHERE v.excluida=0 ORDER BY v.id`).all();
   sendCsv(
     res, "vendas.csv",
     ["ID","Titular","CPF","Plano","Valor","Dependentes","Pagamento","Liberacao","Bloqueado","Matricula","Assinatura","Vendedor","Criada em"],

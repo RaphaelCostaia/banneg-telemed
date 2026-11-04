@@ -160,13 +160,15 @@ async function init() {
   // selects de domínio
   fill("t_sexo", META.sexos, true);
   fill("t_estciv", META.estadosCivis, true);
+  fill("billing", META.formasPagamento); // cartão | pix | boleto
+  atualizarTotal();
 
   // planos
   document.getElementById("planos").innerHTML = Object.values(META.planos).map(p =>
     `<div class="plan" data-id="${p.id}" onclick="selPlano('${p.id}')">
        <div class="nome">${p.nome}</div>
        <div class="preco">${BRL(p.preco.CREDIT_CARD)}</div>
-       <div class="vidas">por mês no cartão</div>
+       <div class="vidas">a partir de /mês (cartão)</div>
        <div class="vidas">${p.maxDependentes===0 ? "1 vida" : "titular + dependentes"}${p.adicionalPorVida?` (+${BRL(p.adicionalPorVida)}/vida acima de ${p.vidasBase})`:""}</div>
      </div>`).join("");
   selPlano("individual");

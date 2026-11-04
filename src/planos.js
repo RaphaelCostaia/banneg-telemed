@@ -1,9 +1,11 @@
 // Catálogo de planos da Banneg Telemedicina e tabelas de domínio do Protheus PLS.
 // Os códigos abaixo foram extraídos da "API de Beneficiarios v1.5" (Medicar/TOTVS).
 
-// Forma de pagamento aceita (produção): apenas cartão de crédito recorrente.
+// Formas de pagamento aceitas (produção): cartão de crédito, Pix e boleto — recorrentes.
 export const FORMAS_PAGAMENTO = {
   CREDIT_CARD: "Cartão de crédito",
+  PIX: "Pix",
+  BOLETO: "Boleto",
 };
 
 // Planos de PESSOA FÍSICA. Preço varia por forma de pagamento.
@@ -14,7 +16,7 @@ export const PLANOS = {
     nome: "Individual",
     maxDependentes: 0, // apenas o titular (1 vida)
     vidasBase: 1,
-    preco: { CREDIT_CARD: 26.0, PIX: 32.0 },
+    preco: { CREDIT_CARD: 26.0, PIX: 32.0, BOLETO: 32.0 },
     descricao: "Telemedicina Individual - 1 vida",
   },
   familiar: {
@@ -23,7 +25,7 @@ export const PLANOS = {
     maxDependentes: 9, // titular + até 9 (base cobre 4 vidas; extras somam R$15/vida)
     vidasBase: 4,
     adicionalPorVida: 15.0,
-    preco: { CREDIT_CARD: 59.9, PIX: 69.9 },
+    preco: { CREDIT_CARD: 59.9, PIX: 69.9, BOLETO: 65.9 },
     descricao: "Telemedicina Familiar - titular + dependentes (base 4 vidas)",
   },
 };
