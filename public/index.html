@@ -4,6 +4,9 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Banneg Telemedicina — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -18,6 +21,7 @@
       <a data-view="inad" onclick="showView('inad')"><span class="ico">⚠️</span> Inadimplência <span id="navInad"></span></a>
       <a data-view="churn" onclick="showView('churn')"><span class="ico">📉</span> Cancelamentos</a>
       <a data-view="cobr" onclick="showView('cobr')"><span class="ico">💳</span> Cobranças</a>
+      <a data-view="audit" id="navAudit" onclick="showView('audit')" style="display:none"><span class="ico">🧾</span> Auditoria</a>
     </nav>
     <div class="side-user"><div id="userbox">…</div></div>
   </aside>
@@ -105,6 +109,21 @@
         <div class="panel" style="padding:16px"><div id="churnBox"></div></div>
       </section>
 
+      <!-- ===== AUDITORIA ===== -->
+      <section class="view" data-view="audit" hidden>
+        <p class="sub" style="margin-top:0">Registro de tudo que acontece no sistema — vendas, pagamentos, liberações, bloqueios, exclusões e callbacks. Nada é apagado.</p>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <input id="auditBusca" placeholder="Buscar por tipo, referência ou conteúdo…" style="padding:8px 12px;border:1px solid var(--line);border-radius:9px;min-width:260px" oninput="filtrarAuditoria()" />
+          <button class="btn sm" onclick="carregarAuditoria()" style="margin-left:auto">↻ Atualizar</button>
+        </div>
+        <div class="panel">
+          <table>
+            <thead><tr><th>Data/hora</th><th>Evento</th><th>Ref.</th><th>Detalhes</th></tr></thead>
+            <tbody id="auditoria"><tr><td colspan="4" class="muted">Carregando…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
       <!-- ===== COBRANÇAS ===== -->
       <section class="view" data-view="cobr" hidden>
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
@@ -130,7 +149,7 @@ const fmtData = (ymd) => ymd ? ymd.split("-").reverse().join("/") : "—";
 const fmtMes = (ym) => { const [a,m]=ym.split("-"); return ["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m]+"/"+a.slice(2); };
 let META = {}, VENDAS = [], ME = {};
 
-const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças" };
+const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças", audit:"Auditoria" };
 const PLANO_NOME = { individual: "Individual", familiar: "Familiar", empresa: "Empresa", unitario: "Individual", casal: "Casal" };
 const PAG_BADGE = { aguardando:["gray","Aguardando"], confirmado:["green","Confirmado"], recebido:["green","Recebido"], vencido:["red","Vencido"], estornado:["amber","Estornado"], cotacao:["blue","Cotação"] };
 const LIB_BADGE = { pendente:["gray","Pendente"], liberado:["green","Liberado"], bloqueado:["red","Bloqueado"], erro:["red","Erro"] };
@@ -144,6 +163,47 @@ function showView(name) {
   if (window.matchMedia("(max-width:860px)").matches) fecharSidebar();
   window.scrollTo(0, 0);
   location.hash = name;
+  if (name === "audit") carregarAuditoria();
+}
+
+let AUDIT = [];
+async function carregarAuditoria() {
+  const tb = document.getElementById("auditoria");
+  tb.innerHTML = `<tr><td colspan="4" class="muted">Carregando…</td></tr>`;
+  const r = await api("/api/auditoria");
+  if (r.erro) { tb.innerHTML = `<tr><td colspan="4" class="muted">${r.erro}</td></tr>`; return; }
+  AUDIT = Array.isArray(r) ? r : [];
+  filtrarAuditoria();
+}
+const AUDIT_ROTULO = {
+  venda_criada:"Venda criada", venda_empresa_criada:"Venda empresa criada", venda_excluida:"Venda excluída",
+  pagamento_confirmado:"Pagamento confirmado", cadastro_enviado:"Cadastro enviado à Medicar",
+  liberacao:"Liberação", erro_liberacao:"Erro na liberação", assinatura_cancelada:"Assinatura cancelada",
+  bloqueio:"Bloqueio", desbloqueado:"Desbloqueio", login:"Login", webhook:"Webhook Asaas",
+  n8n_callback:"Callback N8N (ok)", n8n_callback_falha:"Callback N8N (falha)", n8n_callback_erro:"Callback N8N (erro)",
+  n8n_reenvio_manual:"Reenvio de webhook", sync:"Sincronização",
+};
+function filtrarAuditoria() {
+  const q = (document.getElementById("auditBusca").value || "").toLowerCase().trim();
+  const tb = document.getElementById("auditoria");
+  const rows = AUDIT.filter(e => !q ||
+    (e.tipo||"").toLowerCase().includes(q) ||
+    (String(e.referencia||"")).toLowerCase().includes(q) ||
+    JSON.stringify(e.detalhe||"").toLowerCase().includes(q));
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="4" class="muted">Nenhum evento encontrado.</td></tr>`; return; }
+  tb.innerHTML = rows.map(e => {
+    let dt = "—";
+    if (e.created_at) { const [d,t=""] = e.created_at.replace("T"," ").slice(0,19).split(" "); const [y,mo,da] = d.split("-"); dt = `${da}/${mo}/${y} ${t.slice(0,5)}`; }
+    const rot = AUDIT_ROTULO[e.tipo] || e.tipo;
+    const det = e.detalhe == null ? "" : (typeof e.detalhe === "object" ? JSON.stringify(e.detalhe) : String(e.detalhe));
+    const detCurto = det.length > 140 ? det.slice(0,140) + "…" : det;
+    return `<tr>
+      <td class="mono" style="white-space:nowrap;font-size:12px">${dt}</td>
+      <td><span class="badge gray">${rot}</span><div class="muted mono" style="font-size:11px">${e.tipo}</div></td>
+      <td class="mono">${e.referencia ?? "—"}</td>
+      <td class="mono" style="font-size:11px;max-width:420px;word-break:break-word" title="${det.replace(/"/g,'&quot;')}">${detCurto || "—"}</td>
+    </tr>`;
+  }).join("");
 }
 function toggleSidebar(){ document.getElementById("sidebar").classList.toggle("open"); document.getElementById("backdrop").classList.toggle("show"); }
 function fecharSidebar(){ document.getElementById("sidebar").classList.remove("open"); document.getElementById("backdrop").classList.remove("show"); }
@@ -159,6 +219,7 @@ async function carregar() {
   ME = me;
   document.getElementById("userbox").innerHTML =
     `<div>👤 <b>${me.nome}</b></div><a href="#" onclick="sair();return false">Sair</a>`;
+  document.getElementById("navAudit").style.display = me.papel === "admin" ? "" : "none";
   META = await api("/api/meta");
   renderBanners();
   renderSyncInfo();

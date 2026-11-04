@@ -4,44 +4,53 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Banneg Telemedicina — Contratação</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" />
 <link rel="stylesheet" href="styles.css" />
 <style>
   html { color-scheme: light; }
-  body { background: #eef2f7; color: #0f172a; }
-  .co-wrap { max-width: 520px; margin: 0 auto; padding: 0 0 40px; }
-  .co-head { background: linear-gradient(135deg, var(--brand-d), var(--brand)); color: #fff; padding: 26px 20px 22px; text-align: center; }
-  .co-head .logo { font-weight: 800; font-size: 22px; letter-spacing: .3px; }
-  .co-head .sub { color: #ffffff; opacity: 1; font-size: 14px; margin-top: 4px; }
-  .co-card { background: #fff; margin: 14px; border-radius: 16px; border: 1px solid var(--line); padding: 18px; box-shadow: 0 1px 3px rgba(15,23,42,.05); }
-  .co-card h3 { margin: 0 0 12px; font-size: 15px; }
+  body { background: var(--bg); color: var(--ink); font-family: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  .co-wrap { max-width: 540px; margin: 0 auto; padding: 0 0 48px; }
+  .co-head { position: relative; overflow: hidden; background: linear-gradient(140deg, #0f766e 0%, #0d9488 55%, #14b8a6 100%); color: #fff; padding: 32px 22px 30px; text-align: center; }
+  .co-head::after { content: ""; position: absolute; right: -60px; top: -60px; width: 180px; height: 180px; border-radius: 50%; background: rgba(255,255,255,.08); }
+  .co-head .logo { font-weight: 800; font-size: 23px; letter-spacing: -.01em; position: relative; }
+  .co-head .sub { color: #d7fbf3; font-size: 13.5px; margin-top: 6px; position: relative; }
+  .co-card { background: #fff; margin: 14px; border-radius: 16px; border: 1px solid var(--line); padding: 20px; box-shadow: var(--shadow-sm); }
+  .co-card h3 { margin: 0 0 14px; font-size: 15px; font-weight: 700; letter-spacing: -.01em; }
   .pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .opt { border: 2px solid var(--line); border-radius: 12px; padding: 12px; text-align: center; cursor: pointer; background: #fff; }
-  .opt.sel { border-color: var(--brand); background: #f0fdfa; }
-  .opt .n { font-weight: 800; }
-  .opt .p { color: var(--brand-d); font-weight: 800; font-size: 18px; margin-top: 2px; }
+  .opt { border: 1.5px solid var(--line); border-radius: 12px; padding: 13px; text-align: center; cursor: pointer; background: #fff; transition: border-color .14s, box-shadow .14s, background .14s; }
+  .opt:hover { border-color: var(--brand); }
+  .opt.sel { border-color: var(--brand); background: var(--brand-soft); box-shadow: 0 0 0 3px rgba(13,148,136,.13); }
+  .opt .n { font-weight: 700; }
+  .opt .p { color: var(--brand-d); font-weight: 800; font-size: 18px; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .opt .s { font-size: 11px; color: var(--muted); }
-  .field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; min-width: 0; }
-  label { font-size: 13px; font-weight: 600; color: #334155; }
-  input, select { width: 100%; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-family: inherit; background: #fff; color: #0f172a; }
+  .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 13px; min-width: 0; }
+  label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+  input, select { width: 100%; max-width: 100%; box-sizing: border-box; -webkit-appearance: none; appearance: none; padding: 12px; border: 1px solid var(--line); border-radius: 10px; font-size: 16px; font-family: inherit; background: #fff; color: var(--ink); transition: border-color .14s, box-shadow .14s; }
   input[type=date] { min-height: 46px; }
-  input::placeholder { color: #94a3b8; }
-  select option { color: #0f172a; background: #fff; }
-  input:focus, select:focus { outline: 2px solid var(--brand); border-color: var(--brand); }
+  input::placeholder { color: var(--faint); }
+  select option { color: var(--ink); background: #fff; }
+  input:focus, select:focus { outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(13,148,136,.16); }
   .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .total { display: flex; justify-content: space-between; align-items: baseline; padding: 14px 0 4px; border-top: 1px dashed var(--line); margin-top: 6px; }
-  .total .v { font-size: 26px; font-weight: 800; color: var(--brand-d); }
+  .total { display: flex; justify-content: space-between; align-items: baseline; padding: 15px 0 4px; border-top: 1px dashed var(--line); margin-top: 6px; }
+  .total .v { font-size: 27px; font-weight: 800; color: var(--brand-d); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
   .total .d { font-size: 12px; color: var(--muted); }
-  .consent { display: flex; gap: 9px; align-items: flex-start; font-size: 13px; color: #475569; margin: 6px 2px 0; }
-  .consent input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: #0ea5a5; cursor: pointer; }
-  .cta { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; font-weight: 800; cursor: pointer; }
-  .cta:disabled { opacity: .6; }
-  .dep { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 10px; background: var(--soft); }
+  .consent { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--ink-2); margin: 10px 2px 0; line-height: 1.45; }
+  .consent input { width: 22px; height: 22px; flex: none; margin-top: 1px; accent-color: var(--brand); cursor: pointer; }
+  .cta { width: 100%; padding: 15px; border: none; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; font-weight: 700; cursor: pointer; box-shadow: 0 2px 8px rgba(13,148,136,.32); transition: background .14s, transform .05s, box-shadow .14s; }
+  .cta:hover { background: var(--brand-d); box-shadow: 0 4px 14px rgba(13,148,136,.4); }
+  .cta:active { transform: translateY(1px); }
+  .cta:disabled { opacity: .6; box-shadow: none; }
+  .dep { border: 1px solid var(--line); border-radius: 12px; padding: 13px; margin-top: 10px; background: var(--soft); }
   .dep .h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-weight: 700; font-size: 14px; }
-  .linkbtn { background: none; border: none; color: var(--accent); cursor: pointer; font-size: 13px; }
-  .erro { background: #fee2e2; color: #b91c1c; padding: 10px 12px; border-radius: 10px; font-size: 14px; margin: 0 14px 12px; display: none; }
-  .pixbox { background: #f8fafc; border: 1px dashed var(--line); border-radius: 10px; padding: 12px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 12px; }
+  .linkbtn { background: none; border: none; color: var(--brand-d); cursor: pointer; font-size: 13px; font-weight: 600; font-family: inherit; }
+  .erro { background: var(--bad-soft); color: #b91c1c; padding: 11px 13px; border-radius: 10px; font-size: 14px; margin: 0 14px 12px; display: none; }
+  .pixbox { background: var(--soft); border: 1px dashed var(--line); border-radius: 10px; padding: 12px; word-break: break-all; font-family: ui-monospace, monospace; font-size: 12px; }
   .muted { color: var(--muted); }
   .center { text-align: center; }
+  .trust { display: flex; justify-content: center; gap: 16px; flex-wrap: wrap; margin: 2px 14px 0; color: var(--muted); font-size: 12px; }
+  .trust span { display: inline-flex; align-items: center; gap: 5px; }
 </style>
 </head>
 <body>
@@ -49,6 +58,10 @@
   <div class="co-head">
     <div class="logo">Banneg Telemedicina</div>
     <div class="sub">Atendimento médico 24h • sem carência • para toda a família</div>
+  </div>
+
+  <div class="trust" style="margin-top:14px">
+    <span>🩺 Consultas 24h</span><span>⚡ Sem carência</span><span>🔒 Pagamento seguro</span>
   </div>
 
   <div class="erro" id="erro"></div>

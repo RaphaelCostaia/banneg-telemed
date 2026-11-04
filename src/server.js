@@ -1016,6 +1016,28 @@ app.get("/api/relatorios/churn", (req, res) => {
   res.json({ periodo: { de, ate }, canceladas, taxaChurn: taxa, porMotivo, lista });
 });
 
+// Auditoria: log de eventos do sistema (apenas admin)
+app.get("/api/auditoria", (req, res) => {
+  if (req.usuario?.papel !== "admin")
+    return res.status(403).json({ erro: "Apenas administradores acessam a auditoria." });
+  const q = (req.query.q || "").toString().trim();
+  const limite = Math.min(Math.max(Number(req.query.limite) || 300, 1), 1000);
+  let sql = "SELECT id, tipo, referencia, detalhe, created_at FROM eventos";
+  const args = [];
+  if (q) {
+    sql += " WHERE tipo LIKE ? OR referencia LIKE ? OR detalhe LIKE ?";
+    args.push(`%${q}%`, `%${q}%`, `%${q}%`);
+  }
+  sql += " ORDER BY id DESC LIMIT ?";
+  args.push(limite);
+  const rows = db.prepare(sql).all(...args).map((r) => {
+    let detalhe = null;
+    try { detalhe = r.detalhe ? JSON.parse(r.detalhe) : null; } catch { detalhe = r.detalhe; }
+    return { ...r, detalhe };
+  });
+  res.json(rows);
+});
+
 function csvEscape(v) {
   if (v == null) return "";
   const s = String(v);
