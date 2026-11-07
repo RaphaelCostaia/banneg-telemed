@@ -85,10 +85,10 @@
         <div class="panel">
           <table>
             <thead><tr>
-              <th>#</th><th>Titular</th><th>Plano</th><th>Valor</th>
+              <th>#</th><th>Data</th><th>Titular</th><th>Plano</th><th>Valor</th>
               <th>Pagamento</th><th>Liberação</th><th>Cobrança</th><th></th>
             </tr></thead>
-            <tbody id="vendas"><tr><td colspan="8" class="muted">Carregando…</td></tr></tbody>
+            <tbody id="vendas"><tr><td colspan="9" class="muted">Carregando…</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -147,6 +147,7 @@
 <script>
 const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtData = (ymd) => ymd ? ymd.split("-").reverse().join("/") : "—";
+const fmtDataVenda = (s) => { if (!s) return "—"; const [d] = String(s).replace("T"," ").split(" "); const [y,mo,da] = d.split("-"); return (da&&mo&&y) ? `${da}/${mo}/${y}` : "—"; };
 const fmtMes = (ym) => { const [a,m]=ym.split("-"); return ["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m]+"/"+a.slice(2); };
 let META = {}, VENDAS = [], ME = {};
 
@@ -358,7 +359,7 @@ function filtrar() {
 
 function renderVendas(rows) {
   const tb = document.getElementById("vendas");
-  if (!rows.length) { tb.innerHTML = `<tr><td colspan="8" class="muted">Nenhuma venda encontrada.</td></tr>`; return; }
+  if (!rows.length) { tb.innerHTML = `<tr><td colspan="9" class="muted">Nenhuma venda encontrada.</td></tr>`; return; }
   tb.innerHTML = rows.map(v => {
     const podeLiberar = (v.status_pagamento==="confirmado"||v.status_pagamento==="recebido") && v.status_liberacao!=="liberado" && v.status_liberacao!=="bloqueado";
     const linkBtn = v.primeira_cobranca_url ? `<a class="btn sm" href="${v.primeira_cobranca_url}" target="_blank">Pagar</a>` : "—";
@@ -372,6 +373,7 @@ function renderVendas(rows) {
     const assinBadge = v.assinatura_status==="cancelada" ? ` <span class="badge gray">assinatura cancelada</span>` : "";
     return `<tr>
       <td class="mono">${v.id}</td>
+      <td class="mono" style="white-space:nowrap;font-size:13px">${fmtDataVenda(v.created_at)}</td>
       <td><a href="#" onclick="detalhe(${v.id});return false">${v.titular_nome}</a><div class="muted" style="font-size:12px">${v.tipo_pessoa==="juridica" ? (v.qtd_vidas||v.qtd_dependentes)+" vidas" : v.qtd_dependentes+" dep."}${v.vendedor?" · "+v.vendedor:""}</div></td>
       <td>${PLANO_NOME[v.tipo_plano]||v.tipo_plano}${v.tipo_pessoa==="juridica"?" 🏢":""}</td>
       <td>${BRL(v.valor)}</td>
