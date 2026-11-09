@@ -31,6 +31,8 @@ const CAMINHOS_PUBLICOS = new Set([
   "/checkout", "/checkout.html", "/api/checkout", "/api/checkout/meta",
   // snapshot do disparo empurrado pelo N8N (máquina-a-máquina, validado por token)
   "/api/disparo-stats",
+  // recuperação: link novo de uma cobrança (N8N, validado por token)
+  "/cobranca/regenerar",
 ]);
 
 app.use((req, res, next) => {
@@ -95,6 +97,45 @@ app.get("/api/disparo", (req, res) => {
   let dados = {};
   try { dados = JSON.parse(row.payload); } catch { dados = {}; }
   res.json({ ...dados, recebido_em: row.recebido_em });
+});
+
+// ===== Recuperação de pagamento (toque pós-vencimento) =====
+// O N8N chama quando o lead quer finalizar e o link antigo pode ter expirado.
+// Consulta a cobrança no Asaas e devolve o link/QR ATUAL (a página de fatura do
+// Asaas continua pagável mesmo após o vencimento). Público + token.
+app.post("/cobranca/regenerar", async (req, res) => {
+  if (!N8N_WEBHOOK_TOKEN || req.headers["x-banneg-token"] !== N8N_WEBHOOK_TOKEN) {
+    return res.status(403).json({ erro: "token inválido" });
+  }
+  const cobrancaId = (req.body?.cobranca_id || "").toString().trim();
+  if (!cobrancaId) return res.status(400).json({ erro: "informe cobranca_id" });
+  try {
+    const pay = await asaas.getPayment(cobrancaId);
+    if (!pay || !pay.id) return res.status(404).json({ erro: "cobrança não encontrada" });
+    const paga = PAGO.has(pay.status);
+    let pixCopiaECola = null;
+    if (!paga && pay.billingType === "PIX") {
+      try { const qr = await asaas.getPixQrCode(pay.id); pixCopiaECola = qr?.payload || null; } catch { /* opcional */ }
+    }
+    // mantém o espelho local em dia (status/vencimento podem ter mudado)
+    const vendaId = db.prepare("SELECT venda_id FROM cobrancas WHERE asaas_payment_id=?").get(pay.id)?.venda_id ?? null;
+    if (vendaId) upsertCobranca(pay, vendaId);
+    logEvento("cobranca_regenerada", vendaId ?? cobrancaId, { status: pay.status, paga });
+    res.json({
+      ok: true,
+      cobranca_id: pay.id,
+      paga, // true = já foi paga; o N8N deve parar o toque
+      status: pay.status,
+      billing_type: pay.billingType,
+      valor: pay.value,
+      vencimento: pay.dueDate || null,
+      link_pagamento: pay.invoiceUrl || null,
+      pixCopiaECola,
+    });
+  } catch (e) {
+    logEvento("cobranca_regenerar_erro", cobrancaId, { erro: e.message });
+    res.status(502).json({ erro: "falha ao consultar a cobrança no Asaas" });
+  }
 });
 
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
