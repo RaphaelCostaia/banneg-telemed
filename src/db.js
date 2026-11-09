@@ -129,6 +129,14 @@ ensureColumn("vendas", "excluida_em", "TEXT");
 ensureColumn("vendas", "excluida_por", "TEXT");
 ensureColumn("vendas", "excluida_motivo", "TEXT");
 
+// Snapshot do disparo de prospecção — o N8N empurra os contadores a cada 15 min.
+// Guardamos só o ÚLTIMO estado (uma linha, id=1 — sobrescreve). Sem histórico.
+db.exec(`CREATE TABLE IF NOT EXISTS disparo_stats (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  payload TEXT NOT NULL,
+  recebido_em TEXT NOT NULL DEFAULT (datetime('now'))
+);`);
+
 export function logEvento(tipo, referencia, detalhe) {
   try {
     db.prepare(

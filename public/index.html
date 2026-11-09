@@ -22,6 +22,7 @@
       <a data-view="inad" onclick="showView('inad')"><span class="ico">⚠️</span> Inadimplência <span id="navInad"></span></a>
       <a data-view="churn" onclick="showView('churn')"><span class="ico">📉</span> Cancelamentos</a>
       <a data-view="cobr" onclick="showView('cobr')"><span class="ico">💳</span> Cobranças</a>
+      <a data-view="disparo" onclick="showView('disparo')"><span class="ico">📣</span> Disparo</a>
       <a data-view="audit" id="navAudit" onclick="showView('audit')" style="display:none"><span class="ico">🧾</span> Auditoria</a>
     </nav>
     <div class="side-user"><div id="userbox">…</div></div>
@@ -110,6 +111,16 @@
         <div class="panel" style="padding:16px"><div id="churnBox"></div></div>
       </section>
 
+      <!-- ===== DISPARO ===== -->
+      <section class="view" data-view="disparo" hidden>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+          <p class="sub" id="disparoResumo" style="margin:0">Status do disparo de prospecção, atualizado automaticamente pelo robô.</p>
+          <button class="btn sm" onclick="carregarDisparo()" style="margin-left:auto">↻ Atualizar</button>
+        </div>
+        <div class="cards" id="disparoCards" style="margin-bottom:18px"></div>
+        <div class="panel" style="padding:18px" id="disparoBox"><p class="muted" style="margin:0">Carregando…</p></div>
+      </section>
+
       <!-- ===== AUDITORIA ===== -->
       <section class="view" data-view="audit" hidden>
         <p class="sub" style="margin-top:0">Registro de tudo que acontece no sistema — vendas, pagamentos, liberações, bloqueios, exclusões e callbacks. Nada é apagado.</p>
@@ -151,7 +162,7 @@ const fmtDataVenda = (s) => { if (!s) return "—"; const [d] = String(s).replac
 const fmtMes = (ym) => { const [a,m]=ym.split("-"); return ["","jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"][+m]+"/"+a.slice(2); };
 let META = {}, VENDAS = [], ME = {};
 
-const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças", audit:"Auditoria" };
+const TITULOS = { geral:"Visão geral", vendas:"Vendas e clientes", inad:"Inadimplência", churn:"Cancelamentos (churn)", cobr:"Cobranças", disparo:"Disparo de prospecção", audit:"Auditoria" };
 const PLANO_NOME = { individual: "Individual", familiar: "Familiar", empresa: "Empresa", unitario: "Individual", casal: "Casal" };
 const PAG_BADGE = { aguardando:["gray","Aguardando"], confirmado:["green","Confirmado"], recebido:["green","Recebido"], vencido:["red","Vencido"], estornado:["amber","Estornado"], cotacao:["blue","Cotação"] };
 const LIB_BADGE = { pendente:["gray","Pendente"], liberado:["green","Liberado"], bloqueado:["red","Bloqueado"], erro:["red","Erro"] };
@@ -166,6 +177,58 @@ function showView(name) {
   window.scrollTo(0, 0);
   location.hash = name;
   if (name === "audit") carregarAuditoria();
+  if (name === "disparo") carregarDisparo();
+}
+
+function haQuantoTempo(iso) {
+  if (!iso) return "agora";
+  const t = iso.includes("T") ? Date.parse(iso) : Date.parse(iso.replace(" ", "T") + "Z"); // SQLite grava UTC
+  if (isNaN(t)) return "—";
+  const min = Math.max(0, Math.round((Date.now() - t) / 60000));
+  if (min < 1) return "agora mesmo";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  return h < 24 ? `há ${h}h` : `há ${Math.floor(h / 24)}d`;
+}
+async function carregarDisparo() {
+  const cardsEl = document.getElementById("disparoCards");
+  const box = document.getElementById("disparoBox");
+  const resumo = document.getElementById("disparoResumo");
+  const d = await api("/api/disparo");
+  if (!d || d.vazio) {
+    cardsEl.innerHTML = "";
+    resumo.textContent = "Status do disparo de prospecção, atualizado automaticamente pelo robô.";
+    box.innerHTML = `<p class="muted" style="margin:0">Aguardando o primeiro envio do robô de disparo. Assim que o N8N mandar os números, eles aparecem aqui (a cada 15 min).</p>`;
+    return;
+  }
+  const n = (x) => Number(x || 0);
+  const total = n(d.total), enviado = n(d.enviado), pendente = n(d.pendente), falha = n(d.falha), optout = n(d.optout), hoje = n(d.enviados_hoje), proc = n(d.processando);
+  const taxa = d.taxa_sucesso != null ? Number(d.taxa_sucesso) : (enviado + falha ? enviado / (enviado + falha) * 100 : 0);
+  const pct = total ? Math.min(100, Math.round(enviado / total * 100)) : 0;
+  const NUM = (v) => v.toLocaleString("pt-BR");
+  const cards = [
+    ["Total na base", total, "brand", ""],
+    ["Enviados", enviado, "", "ok"],
+    ["Pendentes", pendente, "", ""],
+    ["Falhas", falha, "", falha ? "bad" : ""],
+    ["Opt-out", optout, "", optout ? "warn" : ""],
+    ["Enviados hoje", hoje, "", ""],
+  ];
+  cardsEl.innerHTML = cards.map(([k, v, cls, vcls]) =>
+    `<div class="card ${cls}"><div class="k">${k}</div><div class="v ${vcls}">${NUM(v)}</div></div>`).join("");
+  resumo.innerHTML = `Atualizado <b>${haQuantoTempo(d.atualizado_em || d.recebido_em)}</b> · robô de prospecção`;
+  box.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+      <b>Progresso da base</b>
+      <span class="muted mono">${NUM(enviado)} / ${NUM(total)} (${pct}%)</span>
+    </div>
+    <div style="height:14px;background:#eef2f7;border-radius:999px;overflow:hidden">
+      <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,var(--brand),var(--brand-d));border-radius:999px;transition:width .4s"></div>
+    </div>
+    <div style="display:flex;gap:28px;flex-wrap:wrap;margin-top:18px">
+      <div><div class="k muted" style="font-size:12px">TAXA DE SUCESSO</div><div style="font-size:26px;font-weight:800;color:${taxa >= 95 ? 'var(--ok)' : taxa >= 80 ? 'var(--warn)' : 'var(--bad)'}">${taxa.toFixed(1)}%</div></div>
+      <div><div class="k muted" style="font-size:12px">EM PROCESSAMENTO</div><div style="font-size:26px;font-weight:800">${NUM(proc)}</div></div>
+    </div>`;
 }
 
 let AUDIT = [];
@@ -550,7 +613,7 @@ function fecharModal(){ document.getElementById("modalBg").classList.remove("sho
 document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
 
 // abre a view da âncora (ex.: #inad) ou a visão geral
-showView(["geral","vendas","inad","churn","cobr"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "geral");
+showView(["geral","vendas","inad","churn","cobr","disparo"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "geral");
 carregar();
 setInterval(carregar, 30000);
 </script>

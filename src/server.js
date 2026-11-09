@@ -8,7 +8,8 @@ import { liberarVenda, liberarEmpresa, bloquearBeneficiario, desbloquearBenefici
 import { PLANOS, getPlano, calcularValor, calcularValorEmpresa, precoPorVidaPME, FAIXAS_PME, PME_LIMITE_COTACAO, FORMAS_PAGAMENTO, GRAUS_PARENTESCO, ESTADOS_CIVIS, SEXOS, BILLING_TYPES, MOTIVOS_BLOQUEIO, validarNomeANS } from "./planos.js";
 import { seedAdmin, autenticar, criarSessao, obterSessao, destruirSessao, parseCookies, verificarApiKey } from "./auth.js";
 
-const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || "";
+const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || ""; // pós-venda (banneg-eventos)
+const N8N_WEBHOOK_COBRANCA_URL = process.env.N8N_WEBHOOK_COBRANCA_URL || ""; // recuperação (banneg-cobranca)
 const N8N_WEBHOOK_TOKEN = process.env.N8N_WEBHOOK_TOKEN || "";
 
 const AUTO_BLOQUEAR_VENCIDO = String(process.env.AUTO_BLOQUEAR_VENCIDO || "false").toLowerCase() === "true";
@@ -28,6 +29,8 @@ const CAMINHOS_PUBLICOS = new Set([
   "/api/login", "/api/logout", "/api/health", "/webhooks/asaas",
   // autocadastro público (link enviado ao cliente pela IA)
   "/checkout", "/checkout.html", "/api/checkout", "/api/checkout/meta",
+  // snapshot do disparo empurrado pelo N8N (máquina-a-máquina, validado por token)
+  "/api/disparo-stats",
 ]);
 
 app.use((req, res, next) => {
@@ -71,6 +74,28 @@ app.get("/api/me", (req, res) => res.json({ nome: req.usuario.nome, login: req.u
 app.get("/checkout", (req, res) => res.sendFile(join(publicDir, "checkout.html")));
 
 app.use(express.static(publicDir));
+
+// ===== Disparo de prospecção =====
+// O N8N empurra o snapshot a cada 15 min (público + token). Guardamos só o último estado.
+app.post("/api/disparo-stats", (req, res) => {
+  if (!N8N_WEBHOOK_TOKEN || req.headers["x-banneg-token"] !== N8N_WEBHOOK_TOKEN) {
+    return res.status(403).json({ erro: "token inválido" });
+  }
+  const body = req.body && typeof req.body === "object" ? req.body : {};
+  db.prepare(
+    `INSERT INTO disparo_stats (id, payload, recebido_em) VALUES (1, ?, datetime('now'))
+     ON CONFLICT(id) DO UPDATE SET payload=excluded.payload, recebido_em=excluded.recebido_em`
+  ).run(JSON.stringify(body));
+  res.json({ ok: true });
+});
+// Leitura pro dashboard (sessão). Devolve o snapshot + quando foi recebido.
+app.get("/api/disparo", (req, res) => {
+  const row = db.prepare("SELECT payload, recebido_em FROM disparo_stats WHERE id=1").get();
+  if (!row) return res.json({ vazio: true });
+  let dados = {};
+  try { dados = JSON.parse(row.payload); } catch { dados = {}; }
+  res.json({ ...dados, recebido_em: row.recebido_em });
+});
 
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");
 const toYmd = (s) => String(s || "").replace(/-/g, ""); // 2024-01-31 -> 20240131
@@ -192,11 +217,12 @@ async function criarVendaPF(b, vendedorNome) {
     externalReference: `venda:${vendaId}`,
   });
 
-  let invoiceUrl = null, pixCopiaECola = null;
+  let invoiceUrl = null, pixCopiaECola = null, primeiraCobranca = null;
   try {
     const pays = await asaas.getSubscriptionPayments(subscription.id);
     const first = pays?.data?.[0];
     if (first) {
+      primeiraCobranca = first;
       invoiceUrl = first.invoiceUrl || null;
       upsertCobranca(first, vendaId);
       if (billingType === "PIX") { try { const qr = await asaas.getPixQrCode(first.id); pixCopiaECola = qr?.payload || null; } catch { /* opcional */ } }
@@ -207,6 +233,19 @@ async function criarVendaPF(b, vendedorNome) {
     `UPDATE vendas SET asaas_customer_id=?, asaas_subscription_id=?, primeira_cobranca_url=?, updated_at=datetime('now') WHERE id=?`
   ).run(customer.id, subscription.id, invoiceUrl, vendaId);
   logEvento("venda_criada", vendaId, { customer: customer.id, subscription: subscription.id, externalId, origem: vendedorNome });
+
+  // Recuperação de pagamento: avisa o N8N que a cobrança foi gerada e ainda NÃO foi paga
+  // (Pix/boleto/cartão não pago na hora). Dispara em background — não atrasa o checkout.
+  if (primeiraCobranca && !PAGO.has(primeiraCobranca.status)) {
+    const vendaRow = qVenda.get(vendaId);
+    notificarN8N(vendaRow, "cobranca_gerada", {
+      plano: plano.id,
+      cobranca_id: primeiraCobranca.id,
+      link_pagamento: invoiceUrl,
+      vencimento: primeiraCobranca.dueDate || null,
+      created_at: vendaRow.created_at,
+    }).catch(() => {});
+  }
 
   return { ok: true, venda_id: vendaId, externalId, paymentLink: invoiceUrl, pixCopiaECola, valor,
     plano: plano.nome, billingType, qtdVidas, customer: customer.id, subscription: subscription.id };
@@ -385,7 +424,9 @@ function upsertCobranca(p, vendaId) {
 
 // Callback para o N8N (fire-and-forget) a cada mudança relevante da venda.
 async function notificarN8N(venda, evento, extra = {}) {
-  if (!N8N_WEBHOOK_URL || !venda) return false;
+  // Roteia por evento: recuperação vai para um webhook separado; o resto, para o pós-venda.
+  const url = evento === "cobranca_gerada" ? N8N_WEBHOOK_COBRANCA_URL : N8N_WEBHOOK_URL;
+  if (!url || !venda) return false;
   const pf = venda.tipo_pessoa !== "juridica";
   const acesso = pf
     ? {
@@ -426,7 +467,7 @@ async function notificarN8N(venda, evento, extra = {}) {
   try {
     const headers = { "Content-Type": "application/json" };
     if (N8N_WEBHOOK_TOKEN) headers["x-banneg-token"] = N8N_WEBHOOK_TOKEN;
-    const resp = await fetch(N8N_WEBHOOK_URL, {
+    const resp = await fetch(url, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
