@@ -3,3 +3,6 @@ data/*.db
 data/*.db-*
 .env
 *.log
+
+# Informativo com token — NUNCA commitar
+INFORMATIVO_N8N_Nivel2.md
