@@ -11,6 +11,8 @@ import { seedAdmin, autenticar, criarSessao, obterSessao, destruirSessao, parseC
 const N8N_WEBHOOK_URL = process.env.N8N_WEBHOOK_URL || ""; // pós-venda (banneg-eventos)
 const N8N_WEBHOOK_COBRANCA_URL = process.env.N8N_WEBHOOK_COBRANCA_URL || ""; // recuperação (banneg-cobranca)
 const N8N_WEBHOOK_TOKEN = process.env.N8N_WEBHOOK_TOKEN || "";
+// Valida o token compartilhado com o N8N nas rotas máquina-a-máquina.
+const tokenOk = (req) => !!N8N_WEBHOOK_TOKEN && req.headers["x-banneg-token"] === N8N_WEBHOOK_TOKEN;
 
 const AUTO_BLOQUEAR_VENCIDO = String(process.env.AUTO_BLOQUEAR_VENCIDO || "false").toLowerCase() === "true";
 const SYNC_MIN = Number(process.env.ASAAS_SYNC_MINUTES || 5);
@@ -33,6 +35,10 @@ const CAMINHOS_PUBLICOS = new Set([
   "/api/disparo-stats",
   // recuperação: link novo de uma cobrança (N8N, validado por token)
   "/cobranca/regenerar",
+  // Nível 2 — N8N lê pendentes / grava status / marca engajamento (validado por token)
+  "/api/disparo-contatos/pendentes",
+  "/api/disparo-contatos/status",
+  "/api/disparo-contatos/respondeu",
 ]);
 
 app.use((req, res, next) => {
@@ -136,6 +142,201 @@ app.post("/cobranca/regenerar", async (req, res) => {
     logEvento("cobranca_regenerar_erro", cobrancaId, { erro: e.message });
     res.status(502).json({ erro: "falha ao consultar a cobrança no Asaas" });
   }
+});
+
+// =====================================================================
+//  Nível 2 — Base de disparo no banco + Funil/ROI
+//  A lista de disparo mora aqui (junto das vendas). O N8N lê pendentes,
+//  grava status e marca engajamento; o dashboard cruza tudo e calcula ROI.
+//  Atribuição de venda ao disparo: o link de checkout carrega ?lead= (vira
+//  external_id) e a venda guarda telefone — casamos por qualquer um dos dois.
+// =====================================================================
+
+// Normaliza telefone para 55 + DDD + número (só dígitos).
+function normTel(raw) {
+  const d = onlyDigits(raw);
+  if (!d) return null;
+  if (d.length === 10 || d.length === 11) return "55" + d; // sem DDI -> acrescenta
+  return d; // já com DDI (12/13) ou formato fora do padrão
+}
+const telValido = (t) => !!t && t.length >= 12 && t.length <= 13;
+
+// ---- N8N: ler pendentes (marca como 'processando' para não reenviar) ----
+app.post("/api/disparo-contatos/pendentes", (req, res) => {
+  if (!tokenOk(req)) return res.status(403).json({ erro: "token inválido" });
+  const limite = Math.min(Math.max(Number(req.body?.limite) || 50, 1), 500);
+  const camp = req.body?.campanha_id ? Number(req.body.campanha_id) : null;
+  const sel = db.prepare(
+    `SELECT id, telefone, nome, imagem_url, campanha_id FROM disparo_contatos
+     WHERE status='nao_enviado'${camp ? " AND campanha_id=?" : ""} ORDER BY id LIMIT ?`
+  );
+  const rows = camp ? sel.all(camp, limite) : sel.all(limite);
+  if (rows.length) {
+    const marca = db.prepare("UPDATE disparo_contatos SET status='processando' WHERE id=?");
+    for (const r of rows) marca.run(r.id);
+  }
+  res.json({ ok: true, contatos: rows });
+});
+
+// ---- N8N: gravar resultado do envio (um item ou lote em 'itens') ----
+const STATUS_DISPARO = new Set(["enviado", "falha", "optout", "nao_enviado"]);
+function aplicarStatusContato(item) {
+  const status = (item?.status || "").toString().trim();
+  if (!STATUS_DISPARO.has(status)) return { erro: "status inválido" };
+  let row = null;
+  if (item.id) row = db.prepare("SELECT id FROM disparo_contatos WHERE id=?").get(Number(item.id));
+  else if (item.telefone) {
+    const tel = normTel(item.telefone);
+    row = tel ? db.prepare("SELECT id FROM disparo_contatos WHERE telefone=?").get(tel) : null;
+  }
+  if (!row) return { erro: "contato não encontrado" };
+  db.prepare(
+    `UPDATE disparo_contatos SET status=?, erro=?,
+       enviado_em=${status === "enviado" ? "COALESCE(enviado_em, datetime('now'))" : "enviado_em"}
+     WHERE id=?`
+  ).run(status, item.erro || null, row.id);
+  return { ok: true, id: row.id, status };
+}
+app.post("/api/disparo-contatos/status", (req, res) => {
+  if (!tokenOk(req)) return res.status(403).json({ erro: "token inválido" });
+  const b = req.body || {};
+  if (Array.isArray(b.itens)) {
+    const resultados = b.itens.map(aplicarStatusContato);
+    return res.json({ ok: true, resultados });
+  }
+  const r = aplicarStatusContato(b);
+  if (r.erro) return res.status(r.erro === "contato não encontrado" ? 404 : 400).json(r);
+  res.json(r);
+});
+
+// ---- N8N: marcar engajamento (o lead do disparo respondeu) ----
+app.post("/api/disparo-contatos/respondeu", (req, res) => {
+  if (!tokenOk(req)) return res.status(403).json({ erro: "token inválido" });
+  const b = req.body || {};
+  let tel = b.telefone ? normTel(b.telefone) : null;
+  if (!tel && b.external_id) tel = normTel(String(b.external_id).split("@")[0]);
+  if (!tel) return res.status(400).json({ erro: "informe telefone ou external_id" });
+  const info = db.prepare(
+    "UPDATE disparo_contatos SET respondeu_em=COALESCE(respondeu_em, datetime('now')) WHERE telefone=?"
+  ).run(tel);
+  res.json({ ok: true, telefone: tel, encontrado: info.changes > 0 });
+});
+
+// ---- Dashboard: importar contatos (cola a lista; substitui o "colar na planilha") ----
+app.post("/api/disparo-contatos/importar", (req, res) => {
+  const b = req.body || {};
+  const campanha_id = b.campanha_id ? Number(b.campanha_id) : null;
+  if (campanha_id && !db.prepare("SELECT 1 FROM campanhas WHERE id=?").get(campanha_id)) {
+    return res.status(400).json({ erro: "Campanha inexistente." });
+  }
+  let lista = [];
+  if (Array.isArray(b.contatos)) {
+    lista = b.contatos.map((c) => ({ telefone: c.telefone, nome: c.nome, imagem_url: c.imagem_url }));
+  } else if (typeof b.texto === "string") {
+    // uma linha por contato: aceita "telefone; nome", "nome, telefone", ou só o telefone
+    lista = b.texto.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((linha) => {
+      const parts = linha.split(/[;,\t]+/).map((s) => s.trim()).filter(Boolean);
+      let telefone = null; const nomeParts = [];
+      for (const p of parts) {
+        if (!telefone && onlyDigits(p).length >= 8) telefone = p;
+        else nomeParts.push(p);
+      }
+      if (!telefone && parts.length === 1) telefone = parts[0];
+      return { telefone, nome: nomeParts.join(" ") || null };
+    });
+  } else {
+    return res.status(400).json({ erro: "Envie 'texto' (uma linha por contato) ou 'contatos' (array)." });
+  }
+
+  const ins = db.prepare(
+    `INSERT INTO disparo_contatos (telefone, nome, imagem_url, campanha_id)
+     VALUES (?,?,?,?) ON CONFLICT(telefone) DO NOTHING`
+  );
+  let importados = 0, duplicados = 0, invalidos = 0;
+  for (const c of lista) {
+    const tel = normTel(c.telefone);
+    if (!telValido(tel)) { invalidos++; continue; }
+    const info = ins.run(tel, c.nome || null, c.imagem_url || null, campanha_id);
+    if (info.changes > 0) importados++; else duplicados++;
+  }
+  logEvento("disparo_contatos_importados", campanha_id, { importados, duplicados, invalidos, por: req.usuario?.nome });
+  res.json({ ok: true, importados, duplicados, invalidos, total: lista.length });
+});
+
+// ---- Campanhas (CRUD leve para o ROI) ----
+app.get("/api/campanhas", (req, res) => {
+  res.json(db.prepare("SELECT id, nome, custo, criado_em FROM campanhas ORDER BY id DESC").all());
+});
+app.post("/api/campanhas", (req, res) => {
+  const nome = (req.body?.nome || "").toString().trim();
+  if (!nome) return res.status(400).json({ erro: "Informe o nome da campanha." });
+  const custo = Number(req.body?.custo) || 0;
+  const info = db.prepare("INSERT INTO campanhas (nome, custo) VALUES (?,?)").run(nome, custo);
+  const id = Number(info.lastInsertRowid);
+  logEvento("campanha_criada", id, { nome, custo, por: req.usuario?.nome });
+  res.json({ ok: true, id });
+});
+app.post("/api/campanhas/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const c = db.prepare("SELECT * FROM campanhas WHERE id=?").get(id);
+  if (!c) return res.status(404).json({ erro: "Campanha não encontrada." });
+  const nome = req.body?.nome != null ? String(req.body.nome).trim() : c.nome;
+  const custo = req.body?.custo != null ? (Number(req.body.custo) || 0) : c.custo;
+  db.prepare("UPDATE campanhas SET nome=?, custo=? WHERE id=?").run(nome, custo, id);
+  logEvento("campanha_editada", id, { nome, custo, por: req.usuario?.nome });
+  res.json({ ok: true });
+});
+
+// ---- Funil / ROI (o coração do Nível 2) ----
+// Uma venda é atribuída a um contato enviado quando o telefone casa (venda ou
+// external_id do lead) e a venda é posterior ao envio.
+const COND_ATRIBUICAO = `
+  v.excluida=0 AND EXISTS (
+    SELECT 1 FROM disparo_contatos ct
+    WHERE ct.status='enviado' AND ct.enviado_em IS NOT NULL
+      AND v.created_at >= ct.enviado_em
+      AND (
+        ('55' || COALESCE(v.titular_ddd,'') || COALESCE(v.titular_telefone,'')) = ct.telefone
+        OR v.external_id = ct.telefone
+        OR v.external_id LIKE ct.telefone || '@%'
+      )
+      {CAMP}
+  )`;
+const r2 = (x) => Math.round((Number(x) + Number.EPSILON) * 100) / 100;
+function roiRaw(camp) {
+  const cc = camp == null ? "" : " AND campanha_id=?";
+  const ac = camp == null ? [] : [camp];
+  const enviados = db.prepare(`SELECT COUNT(*) n FROM disparo_contatos WHERE status='enviado'${cc}`).get(...ac)?.n ?? 0;
+  const retornaram = db.prepare(`SELECT COUNT(*) n FROM disparo_contatos WHERE respondeu_em IS NOT NULL${cc}`).get(...ac)?.n ?? 0;
+  const sql = `SELECT COUNT(*) vendas, COALESCE(SUM(valor),0) receita FROM (
+      SELECT v.id, v.valor FROM vendas v WHERE ${COND_ATRIBUICAO.replace("{CAMP}", camp == null ? "" : "AND ct.campanha_id=?")}
+    )`;
+  const vrow = db.prepare(sql).get(...ac);
+  return { enviados, retornaram, vendas: vrow.vendas, receita: vrow.receita };
+}
+function roiMetrics(base, custo) {
+  const { enviados, retornaram, vendas, receita } = base;
+  const ticket = vendas ? receita / vendas : 0;
+  return {
+    enviados, retornaram, vendas,
+    receita: r2(receita), custo: r2(custo),
+    taxa_retorno: enviados ? r2((retornaram / enviados) * 100) : 0,   // %
+    taxa_conversao: enviados ? r2((vendas / enviados) * 100) : 0,     // %
+    ticket_medio: r2(ticket),
+    cac: vendas ? r2(custo / vendas) : null,
+    ponto_equilibrio: ticket ? Math.ceil(custo / ticket) : null,     // nº de vendas p/ empatar
+    roi: custo ? r2(((receita - custo) / custo) * 100) : null,       // %
+  };
+}
+app.get("/api/roi", (req, res) => {
+  const camps = db.prepare("SELECT id, nome, custo, criado_em FROM campanhas ORDER BY id DESC").all();
+  const campanhas = camps.map((c) => ({
+    id: c.id, nome: c.nome, criado_em: c.criado_em, ...roiMetrics(roiRaw(c.id), c.custo),
+  }));
+  const custoTotal = camps.reduce((s, c) => s + (c.custo || 0), 0);
+  const geral = roiMetrics(roiRaw(null), custoTotal);
+  const semCampanha = db.prepare("SELECT COUNT(*) n FROM disparo_contatos WHERE campanha_id IS NULL").get().n;
+  res.json({ geral, campanhas, semCampanha });
 });
 
 const onlyDigits = (s) => String(s || "").replace(/\D/g, "");

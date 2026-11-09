@@ -137,6 +137,35 @@ db.exec(`CREATE TABLE IF NOT EXISTS disparo_stats (
   recebido_em TEXT NOT NULL DEFAULT (datetime('now'))
 );`);
 
+// ===== Nível 2 — Funil / ROI do disparo =====
+// A lista de disparo passa a morar aqui (junto das vendas), para o dashboard
+// cruzar sozinho: quem recebeu × quem respondeu × quem comprou.
+// Campanha = um lote de envios ("a cada 200"), com o custo para calcular ROI.
+db.exec(`
+CREATE TABLE IF NOT EXISTS campanhas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  nome TEXT NOT NULL,
+  custo REAL NOT NULL DEFAULT 0,
+  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS disparo_contatos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  telefone TEXT NOT NULL UNIQUE,          -- normalizado: 55 + DDD + número (só dígitos)
+  nome TEXT,
+  status TEXT NOT NULL DEFAULT 'nao_enviado', -- nao_enviado | processando | enviado | falha | optout
+  imagem_url TEXT,
+  erro TEXT,
+  campanha_id INTEGER REFERENCES campanhas(id) ON DELETE SET NULL,
+  enviado_em TEXT,                        -- preenchido no envio
+  respondeu_em TEXT,                      -- preenchido quando o lead responde (engajamento)
+  criado_em TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_disparo_contatos_status ON disparo_contatos(status);
+CREATE INDEX IF NOT EXISTS idx_disparo_contatos_campanha ON disparo_contatos(campanha_id);
+`);
+
 export function logEvento(tipo, referencia, detalhe) {
   try {
     db.prepare(
