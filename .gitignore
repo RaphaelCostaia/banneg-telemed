@@ -4,5 +4,6 @@ data/*.db-*
 .env
 *.log
 
-# Informativo com token — NUNCA commitar
+# Documentos com token — NUNCA commitar
 INFORMATIVO_N8N_Nivel2.md
+RESPOSTA_SOCIO_Nivel2.md
