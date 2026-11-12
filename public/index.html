@@ -220,10 +220,10 @@ async function carregarDisparo() {
   const box = document.getElementById("disparoBox");
   const resumo = document.getElementById("disparoResumo");
   const d = await api("/api/disparo");
-  if (!d || d.vazio) {
+  if (!d || !d.total) {
     cardsEl.innerHTML = "";
-    resumo.textContent = "Status do disparo de prospecção, atualizado automaticamente pelo robô.";
-    box.innerHTML = `<p class="muted" style="margin:0">Aguardando o primeiro envio do robô de disparo. Assim que o N8N mandar os números, eles aparecem aqui (a cada 15 min).</p>`;
+    resumo.innerHTML = `Lido direto do banco · em tempo real`;
+    box.innerHTML = `<p class="muted" style="margin:0">Nenhum contato na base ainda. Importe os contatos na aba <b>Campanhas / ROI</b> → <b>Importar contatos</b>.</p>`;
     return;
   }
   const n = (x) => Number(x || 0);
@@ -241,7 +241,7 @@ async function carregarDisparo() {
   ];
   cardsEl.innerHTML = cards.map(([k, v, cls, vcls]) =>
     `<div class="card ${cls}"><div class="k">${k}</div><div class="v ${vcls}">${NUM(v)}</div></div>`).join("");
-  resumo.innerHTML = `Atualizado <b>${haQuantoTempo(d.atualizado_em || d.recebido_em)}</b> · robô de prospecção`;
+  resumo.innerHTML = `Lido direto do banco · em tempo real (atualizado <b>${haQuantoTempo(d.atualizado_em)}</b>)`;
   box.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px;flex-wrap:wrap;gap:8px">
       <b>Progresso da base</b>
@@ -286,7 +286,7 @@ async function carregarRoi() {
   } else {
     tb.innerHTML = camps.map((c) => `
       <tr>
-        <td><b>${escHtml(c.nome)}</b><div class="muted mono" style="font-size:11px">${fmtDataVenda(c.criado_em)}</div></td>
+        <td><a href="#" onclick="abrirCampanha(${c.id});return false" style="font-weight:700;color:var(--brand);text-decoration:none" title="Ver contatos">${escHtml(c.nome)}</a><div class="muted mono" style="font-size:11px">${fmtDataVenda(c.criado_em)}</div></td>
         <td class="mono" style="white-space:nowrap">${BRL(c.custo)}
           <button class="btn sm" style="margin-left:4px;padding:1px 7px" title="Editar custo" onclick="abrirEditarCampanha(${c.id})">✎</button></td>
         <td class="mono">${NUM(c.enviados)}</td>
@@ -299,8 +299,8 @@ async function carregarRoi() {
         <td class="mono"><b style="color:${corRoi(c.roi)}">${pctBR(c.roi)}</b></td>
       </tr>`).join("");
   }
-  rod.textContent = ROI.semCampanha
-    ? `${ROI.semCampanha} contato(s) importado(s) sem campanha — contam no funil geral, mas não têm custo/ROI próprio.`
+  rod.innerHTML = ROI.semCampanha
+    ? `${ROI.semCampanha} contato(s) importado(s) sem campanha — <a href="#" onclick="abrirCampanha(0);return false">ver / gerenciar</a>. Contam no funil geral, mas não têm custo/ROI próprio.`
     : "";
 }
 
@@ -392,6 +392,83 @@ async function salvarCampanha(id) {
   if (r.erro) { msg.textContent = r.erro; return; }
   fecharModal();
   carregarRoi();
+}
+
+// ===== Detalhe da campanha (contatos: ver / filtrar / adicionar / remover / resetar) =====
+let CAMP_ID = null, CAMP_STATUS = "";
+const DISP_BADGE = { nao_enviado:["gray","Não enviado"], processando:["amber","Processando"], enviado:["green","Enviado"], falha:["red","Falha"], optout:["gray","Opt-out"] };
+const fmtDataHora = (s) => { if (!s) return "—"; const [d,t] = String(s).replace("T"," ").split(" "); const [y,mo,da] = d.split("-"); const hm = (t||"").slice(0,5); return (da&&mo&&y) ? `${da}/${mo} ${hm}` : "—"; };
+
+async function abrirCampanha(id, status = "") {
+  CAMP_ID = id; CAMP_STATUS = status;
+  const q = status ? `?status=${encodeURIComponent(status)}` : "";
+  const d = await api(`/api/campanhas/${id}/contatos${q}`);
+  if (!d || d.erro) { alert(d?.erro || "Erro ao abrir a campanha."); return; }
+  const r = d.resumo;
+  const chips = [["","Todos",r.total],["nao_enviado","Não enviado",r.nao_enviado],["processando","Processando",r.processando],["enviado","Enviado",r.enviado],["falha","Falha",r.falha],["optout","Opt-out",r.optout]];
+  const chipsHtml = chips.map(([s,lbl,n]) => {
+    const ativo = status === s;
+    return `<button class="btn sm" style="${ativo?'background:var(--brand);color:#fff;border-color:var(--brand)':''}" onclick="abrirCampanha(${id},'${s}')">${lbl} <b>${n}</b></button>`;
+  }).join("");
+  const linhas = d.contatos.length ? d.contatos.map((c) => `
+    <tr>
+      <td>${c.nome ? escHtml(c.nome) : '<span class="muted">—</span>'}</td>
+      <td class="mono">${escHtml(c.telefone)}</td>
+      <td>${badge(DISP_BADGE, c.status)}</td>
+      <td class="mono" style="font-size:12px">${fmtDataHora(c.enviado_em)}</td>
+      <td class="mono" style="font-size:12px">${fmtDataHora(c.respondeu_em)}</td>
+      <td style="white-space:nowrap;text-align:right">
+        ${c.status !== "nao_enviado" ? `<button class="btn sm" title="Voltar para a fila (não enviado)" onclick="resetContato(${c.id})">↺</button>` : ""}
+        <button class="btn sm" title="Remover da base" onclick="removerContato(${c.id})">🗑</button>
+      </td>
+    </tr>`).join("") : `<tr><td colspan="6" class="muted">Nenhum contato${status?" com esse status":""}.</td></tr>`;
+  document.getElementById("modalBox").style.maxWidth = "860px";
+  document.getElementById("modalBox").innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+      <h2 style="margin:0">📇 ${escHtml(d.campanha.nome)}</h2>
+      <span class="muted">${r.total} contato(s)</span>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0">${chipsHtml}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--bg,#f6f8fb);padding:10px;border-radius:9px;margin-bottom:12px">
+      <input id="addTel" placeholder="Telefone (com DDD)" style="flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px" />
+      <input id="addNome" placeholder="Nome (opcional)" style="flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px" />
+      <button class="btn primary sm" onclick="addContato()">+ Adicionar</button>
+      <span id="addMsg" class="muted" style="font-size:12px;flex-basis:100%"></span>
+    </div>
+    <div style="overflow:auto;max-height:52vh;border:1px solid var(--line);border-radius:9px">
+      <table style="margin:0">
+        <thead><tr><th>Nome</th><th>Telefone</th><th>Status</th><th>Enviado</th><th>Respondeu</th><th style="text-align:right">Ações</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:16px;display:flex;justify-content:flex-end">
+      <button class="btn" onclick="fecharModal()">Fechar</button>
+    </div>`;
+  document.getElementById("modalBg").classList.add("show");
+}
+async function addContato() {
+  const tel = document.getElementById("addTel").value.trim();
+  const nome = document.getElementById("addNome").value.trim();
+  const msg = document.getElementById("addMsg");
+  if (!tel) { msg.textContent = "Informe o telefone."; return; }
+  const r = await api(`/api/campanhas/${CAMP_ID}/contatos`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ telefone: tel, nome }),
+  });
+  if (r.erro) { msg.textContent = r.erro; return; }
+  abrirCampanha(CAMP_ID, CAMP_STATUS); carregarRoi();
+}
+async function resetContato(id) {
+  if (!confirm("Voltar este contato para 'não enviado'? Ele volta para a fila do disparo (destrava um envio preso).")) return;
+  const r = await api(`/api/disparo-contatos/${id}/reset`, { method: "POST" });
+  if (r.erro) { alert(r.erro); return; }
+  abrirCampanha(CAMP_ID, CAMP_STATUS);
+}
+async function removerContato(id) {
+  if (!confirm("Remover este contato da base? Esta ação não pode ser desfeita.")) return;
+  const r = await api(`/api/disparo-contatos/${id}`, { method: "DELETE" });
+  if (r.erro) { alert(r.erro); return; }
+  abrirCampanha(CAMP_ID, CAMP_STATUS); carregarRoi();
 }
 
 let AUDIT = [];
@@ -772,7 +849,7 @@ async function copiarLink(inputId, btn) {
   const t = btn.textContent; btn.textContent = "Copiado ✓"; btn.disabled = true;
   setTimeout(() => { btn.textContent = t; btn.disabled = false; }, 1500);
 }
-function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); }
+function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modalBox").style.maxWidth = ""; }
 document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
 
 // abre a view da âncora (ex.: #inad) ou a visão geral

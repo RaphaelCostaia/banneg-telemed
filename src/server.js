@@ -96,13 +96,34 @@ app.post("/api/disparo-stats", (req, res) => {
   ).run(JSON.stringify(body));
   res.json({ ok: true });
 });
-// Leitura pro dashboard (sessão). Devolve o snapshot + quando foi recebido.
+// Leitura pro dashboard (sessão). Conta os status DIRETO da base `disparo_contatos`,
+// que é a fonte da verdade desde o Nível 2. O antigo "push" do N8N (disparo_stats)
+// virou redundante — o dado já está aqui, então o painel reflete o estado em tempo real.
 app.get("/api/disparo", (req, res) => {
-  const row = db.prepare("SELECT payload, recebido_em FROM disparo_stats WHERE id=1").get();
-  if (!row) return res.json({ vazio: true });
-  let dados = {};
-  try { dados = JSON.parse(row.payload); } catch { dados = {}; }
-  res.json({ ...dados, recebido_em: row.recebido_em });
+  const b = db.prepare(`
+    SELECT
+      COUNT(*)                                                                    AS total,
+      SUM(status='enviado')                                                       AS enviado,
+      SUM(status='nao_enviado')                                                   AS pendente,
+      SUM(status='falha')                                                         AS falha,
+      SUM(status='optout')                                                        AS optout,
+      SUM(status='processando')                                                   AS processando,
+      SUM(status='enviado' AND date(enviado_em,'-03:00')=date('now','-03:00'))    AS enviados_hoje
+    FROM disparo_contatos
+  `).get();
+  const enviado = b.enviado || 0, falha = b.falha || 0;
+  const taxa_sucesso = (enviado + falha) ? Number(((enviado / (enviado + falha)) * 100).toFixed(1)) : 0;
+  res.json({
+    total: b.total || 0,
+    enviado,
+    pendente: b.pendente || 0,
+    falha,
+    optout: b.optout || 0,
+    processando: b.processando || 0,
+    enviados_hoje: b.enviados_hoje || 0,
+    taxa_sucesso,
+    atualizado_em: new Date().toISOString(),
+  });
 });
 
 // ===== Recuperação de pagamento (toque pós-vencimento) =====
@@ -284,6 +305,87 @@ app.post("/api/campanhas/:id", (req, res) => {
   const custo = req.body?.custo != null ? (Number(req.body.custo) || 0) : c.custo;
   db.prepare("UPDATE campanhas SET nome=?, custo=? WHERE id=?").run(nome, custo, id);
   logEvento("campanha_editada", id, { nome, custo, por: req.usuario?.nome });
+  res.json({ ok: true });
+});
+
+// ---- Dashboard: detalhe da campanha (contatos + resumo por status) ----
+// Dados já existem na `disparo_contatos`; aqui só expomos/editamos (nenhuma mudança no N8N).
+// id numérico = campanha; id=0 = contatos "sem campanha" (campanha_id IS NULL).
+const STATUS_FILTRO = new Set(["nao_enviado", "processando", "enviado", "falha", "optout"]);
+app.get("/api/campanhas/:id/contatos", (req, res) => {
+  const id = Number(req.params.id);
+  const semCamp = id === 0;
+  let campanha = { id: 0, nome: "Sem campanha", custo: 0 };
+  if (!semCamp) {
+    campanha = db.prepare("SELECT id, nome, custo FROM campanhas WHERE id=?").get(id);
+    if (!campanha) return res.status(404).json({ erro: "Campanha não encontrada." });
+  }
+  const where = semCamp ? "campanha_id IS NULL" : "campanha_id=?";
+  const base = semCamp ? [] : [id];
+  const resumo = db.prepare(`
+    SELECT
+      COUNT(*)                   AS total,
+      SUM(status='nao_enviado')  AS nao_enviado,
+      SUM(status='processando')  AS processando,
+      SUM(status='enviado')      AS enviado,
+      SUM(status='falha')        AS falha,
+      SUM(status='optout')       AS optout
+    FROM disparo_contatos WHERE ${where}
+  `).get(...base);
+  const status = (req.query.status || "").toString().trim();
+  const filtro = STATUS_FILTRO.has(status) ? " AND status=?" : "";
+  const contatos = db.prepare(
+    `SELECT id, nome, telefone, status, enviado_em, respondeu_em
+     FROM disparo_contatos WHERE ${where}${filtro} ORDER BY id DESC LIMIT 1000`
+  ).all(...base, ...(filtro ? [status] : []));
+  res.json({
+    campanha,
+    resumo: {
+      total: resumo.total || 0, nao_enviado: resumo.nao_enviado || 0,
+      processando: resumo.processando || 0, enviado: resumo.enviado || 0,
+      falha: resumo.falha || 0, optout: resumo.optout || 0,
+    },
+    contatos,
+  });
+});
+
+// ---- Dashboard: adicionar um contato avulso na campanha (sem reimportar a lista) ----
+app.post("/api/campanhas/:id/contatos", (req, res) => {
+  const id = Number(req.params.id);
+  const campanha_id = id === 0 ? null : id;
+  if (campanha_id && !db.prepare("SELECT 1 FROM campanhas WHERE id=?").get(campanha_id)) {
+    return res.status(404).json({ erro: "Campanha não encontrada." });
+  }
+  const tel = normTel(req.body?.telefone);
+  if (!telValido(tel)) return res.status(400).json({ erro: "Telefone inválido (informe com DDD)." });
+  const nome = (req.body?.nome || "").toString().trim() || null;
+  const info = db.prepare(
+    `INSERT INTO disparo_contatos (telefone, nome, campanha_id)
+     VALUES (?,?,?) ON CONFLICT(telefone) DO NOTHING`
+  ).run(tel, nome, campanha_id);
+  if (info.changes === 0) return res.status(409).json({ erro: "Esse telefone já está na base (em alguma campanha)." });
+  logEvento("disparo_contato_adicionado", campanha_id, { telefone: tel, por: req.usuario?.nome });
+  res.json({ ok: true, id: Number(info.lastInsertRowid) });
+});
+
+// ---- Dashboard: remover um contato da base ----
+app.delete("/api/disparo-contatos/:id", (req, res) => {
+  const id = Number(req.params.id);
+  const info = db.prepare("DELETE FROM disparo_contatos WHERE id=?").run(id);
+  if (info.changes === 0) return res.status(404).json({ erro: "Contato não encontrado." });
+  logEvento("disparo_contato_removido", id, { por: req.usuario?.nome });
+  res.json({ ok: true });
+});
+
+// ---- Dashboard: resetar status (destrava 'processando' preso -> volta pra fila) ----
+app.post("/api/disparo-contatos/:id/reset", (req, res) => {
+  const id = Number(req.params.id);
+  const row = db.prepare("SELECT id FROM disparo_contatos WHERE id=?").get(id);
+  if (!row) return res.status(404).json({ erro: "Contato não encontrado." });
+  db.prepare(
+    "UPDATE disparo_contatos SET status='nao_enviado', erro=NULL, enviado_em=NULL WHERE id=?"
+  ).run(id);
+  logEvento("disparo_contato_reset", id, { por: req.usuario?.nome });
   res.json({ ok: true });
 });
 
