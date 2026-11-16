@@ -85,13 +85,15 @@
           <a class="btn sm" href="/api/export/vendas.csv" style="margin-left:auto">⬇ Exportar CSV</a>
         </div>
         <div class="panel">
-          <table>
-            <thead><tr>
-              <th>#</th><th>Data</th><th>Titular</th><th>Plano</th><th>Valor</th>
-              <th>Pagamento</th><th>Liberação</th><th>Cobrança</th><th></th>
-            </tr></thead>
-            <tbody id="vendas"><tr><td colspan="9" class="muted">Carregando…</td></tr></tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead><tr>
+                <th>#</th><th>Data</th><th>Titular</th><th>Plano</th><th>Valor</th>
+                <th>Pagamento</th><th>Liberação</th><th>Cobrança</th><th></th>
+              </tr></thead>
+              <tbody id="vendas"><tr><td colspan="9" class="muted">Carregando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -99,10 +101,12 @@
       <section class="view" data-view="inad" hidden>
         <p class="sub" id="inadResumo" style="margin-top:0"></p>
         <div class="panel">
-          <table>
-            <thead><tr><th>Titular</th><th>Plano</th><th>Cobranças vencidas</th><th>Dias em atraso</th><th>Valor em risco</th><th>Situação</th><th></th></tr></thead>
-            <tbody id="inadimplencia"><tr><td colspan="7" class="muted">Carregando…</td></tr></tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Titular</th><th>Plano</th><th>Cobranças vencidas</th><th>Dias em atraso</th><th>Valor em risco</th><th>Situação</th><th></th></tr></thead>
+              <tbody id="inadimplencia"><tr><td colspan="7" class="muted">Carregando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -137,13 +141,15 @@
         </div>
         <div class="cards" id="roiCards" style="margin-bottom:18px"></div>
         <div class="panel">
-          <table>
-            <thead><tr>
-              <th>Campanha</th><th>Custo</th><th>Enviados</th><th>Retorno</th>
-              <th>Vendas</th><th>Conversão</th><th>CAC</th><th>Ticket</th><th>Equilíbrio</th><th>ROI</th>
-            </tr></thead>
-            <tbody id="roiTabela"><tr><td colspan="10" class="muted">Carregando…</td></tr></tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead><tr>
+                <th>Campanha</th><th>Custo</th><th>Enviados</th><th>Retorno</th>
+                <th>Vendas</th><th>Conversão</th><th>CAC</th><th>Ticket</th><th>Equilíbrio</th><th>ROI</th>
+              </tr></thead>
+              <tbody id="roiTabela"><tr><td colspan="10" class="muted">Carregando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
         <p class="muted" id="roiRodape" style="font-size:12px;margin-top:10px"></p>
       </section>
@@ -156,10 +162,12 @@
           <button class="btn sm" onclick="carregarAuditoria()" style="margin-left:auto">↻ Atualizar</button>
         </div>
         <div class="panel">
-          <table>
-            <thead><tr><th>Data/hora</th><th>Evento</th><th>Ref.</th><th>Detalhes</th></tr></thead>
-            <tbody id="auditoria"><tr><td colspan="4" class="muted">Carregando…</td></tr></tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Data/hora</th><th>Evento</th><th>Ref.</th><th>Detalhes</th></tr></thead>
+              <tbody id="auditoria"><tr><td colspan="4" class="muted">Carregando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </section>
 
@@ -169,10 +177,12 @@
           <a class="btn sm" href="/api/export/cobrancas.csv" style="margin-left:auto">⬇ Exportar CSV</a>
         </div>
         <div class="panel">
-          <table>
-            <thead><tr><th>Vencimento</th><th>Titular</th><th>Forma</th><th>Valor</th><th>Status</th><th>Link</th></tr></thead>
-            <tbody id="cobrancas"><tr><td colspan="6" class="muted">Carregando…</td></tr></tbody>
-          </table>
+          <div class="table-scroll">
+            <table>
+              <thead><tr><th>Vencimento</th><th>Titular</th><th>Forma</th><th>Valor</th><th>Status</th><th>Link</th></tr></thead>
+              <tbody id="cobrancas"><tr><td colspan="6" class="muted">Carregando…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </section>
     </div>
@@ -181,6 +191,7 @@
 
 <div class="backdrop" id="backdrop" onclick="toggleSidebar()"></div>
 <div class="modal-bg" id="modalBg"><div class="modal" id="modalBox"></div></div>
+<div class="toasts" id="toasts"></div>
 
 <script>
 const BRL = (n) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -291,7 +302,7 @@ async function carregarRoi() {
       <tr>
         <td><a href="#" onclick="abrirCampanha(${c.id});return false" style="font-weight:700;color:var(--brand);text-decoration:none" title="Ver contatos">${escHtml(c.nome)}</a><div class="muted mono" style="font-size:11px">${fmtDataVenda(c.criado_em)}</div></td>
         <td class="mono" style="white-space:nowrap">${BRL(c.custo)}
-          <button class="btn sm" style="margin-left:4px;padding:1px 7px" title="Editar custo" onclick="abrirEditarCampanha(${c.id})">✎</button></td>
+          <button class="btn sm icon" style="margin-left:4px" title="Editar custo" aria-label="Editar custo da campanha" onclick="abrirEditarCampanha(${c.id})">✎</button></td>
         <td class="mono">${NUM(c.enviados)}</td>
         <td class="mono">${pctBR(c.taxa_retorno)} <span class="muted">(${NUM(c.retornaram)})</span></td>
         <td class="mono">${NUM(c.vendas)}</td>
@@ -421,8 +432,8 @@ async function abrirCampanha(id, status = "") {
       <td class="mono" style="font-size:12px">${fmtDataHora(c.enviado_em)}</td>
       <td class="mono" style="font-size:12px">${fmtDataHora(c.respondeu_em)}</td>
       <td style="white-space:nowrap;text-align:right">
-        ${c.status !== "nao_enviado" ? `<button class="btn sm" title="Voltar para a fila (não enviado)" onclick="resetContato(${c.id})">↺</button>` : ""}
-        <button class="btn sm" title="Remover da base" onclick="removerContato(${c.id})">🗑</button>
+        ${c.status !== "nao_enviado" ? `<button class="btn sm icon" title="Voltar para a fila (não enviado)" aria-label="Voltar para a fila" onclick="resetContato(${c.id}, this)">↺</button>` : ""}
+        <button class="btn sm icon danger" title="Remover da base" aria-label="Remover contato" onclick="removerContato(${c.id}, this)">🗑</button>
       </td>
     </tr>`).join("") : `<tr><td colspan="6" class="muted">Nenhum contato${status?" com esse status":""}.</td></tr>`;
   document.getElementById("modalBox").style.maxWidth = "860px";
@@ -435,7 +446,7 @@ async function abrirCampanha(id, status = "") {
     <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;background:var(--bg,#f6f8fb);padding:10px;border-radius:9px;margin-bottom:12px">
       <input id="addTel" placeholder="Telefone (com DDD)" style="flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px" />
       <input id="addNome" placeholder="Nome (opcional)" style="flex:1;min-width:150px;padding:8px 10px;border:1px solid var(--line);border-radius:8px" />
-      <button class="btn primary sm" onclick="addContato()">+ Adicionar</button>
+      <button class="btn primary sm" onclick="addContato(this)">+ Adicionar</button>
       <span id="addMsg" class="muted" style="font-size:12px;flex-basis:100%"></span>
     </div>
     <div style="overflow:auto;max-height:52vh;border:1px solid var(--line);border-radius:9px">
@@ -453,28 +464,45 @@ async function abrirCampanha(id, status = "") {
     </div>`;
   document.getElementById("modalBg").classList.add("show");
 }
-async function addContato() {
+// Feedback transitório (não bloqueia como o alert)
+function toast(msg, tipo = "") {
+  const box = document.getElementById("toasts");
+  if (!box) return;
+  const el = document.createElement("div");
+  el.className = "toast" + (tipo ? " " + tipo : "");
+  el.textContent = msg;
+  box.appendChild(el);
+  setTimeout(() => { el.style.transition = "opacity .25s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 250); }, 2600);
+}
+
+async function addContato(btn) {
   const tel = document.getElementById("addTel").value.trim();
   const nome = document.getElementById("addNome").value.trim();
   const msg = document.getElementById("addMsg");
   if (!tel) { msg.textContent = "Informe o telefone."; return; }
+  if (btn) { btn.disabled = true; btn.textContent = "Adicionando…"; }
   const r = await api(`/api/campanhas/${CAMP_ID}/contatos`, {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ telefone: tel, nome }),
   });
-  if (r.erro) { msg.textContent = r.erro; return; }
+  if (r.erro) { if (btn) { btn.disabled = false; btn.textContent = "+ Adicionar"; } msg.textContent = r.erro; return; }
+  toast("Contato adicionado.", "ok");
   abrirCampanha(CAMP_ID, CAMP_STATUS); carregarRoi();
 }
-async function resetContato(id) {
+async function resetContato(id, btn) {
   if (!confirm("Voltar este contato para 'não enviado'? Ele volta para a fila do disparo (destrava um envio preso).")) return;
+  if (btn) btn.disabled = true;
   const r = await api(`/api/disparo-contatos/${id}/reset`, { method: "POST" });
-  if (r.erro) { alert(r.erro); return; }
+  if (r.erro) { if (btn) btn.disabled = false; toast(r.erro, "bad"); return; }
+  toast("Contato voltou para a fila.", "ok");
   abrirCampanha(CAMP_ID, CAMP_STATUS);
 }
-async function removerContato(id) {
+async function removerContato(id, btn) {
   if (!confirm("Remover este contato da base? Esta ação não pode ser desfeita.")) return;
+  if (btn) btn.disabled = true;
   const r = await api(`/api/disparo-contatos/${id}`, { method: "DELETE" });
-  if (r.erro) { alert(r.erro); return; }
+  if (r.erro) { if (btn) btn.disabled = false; toast(r.erro, "bad"); return; }
+  toast("Contato removido.", "ok");
   abrirCampanha(CAMP_ID, CAMP_STATUS); carregarRoi();
 }
 
@@ -879,7 +907,10 @@ setInterval(() => {
 document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
 
 // abre a view da âncora (ex.: #inad) ou a visão geral
-showView(["geral","vendas","inad","churn","cobr","disparo","roi"].includes(location.hash.slice(1)) ? location.hash.slice(1) : "geral");
+const VIEWS_VALIDAS = ["geral","vendas","inad","churn","cobr","disparo","roi","audit"];
+showView(VIEWS_VALIDAS.includes(location.hash.slice(1)) ? location.hash.slice(1) : "geral");
+// navegação por hash / botão voltar do navegador
+window.addEventListener("hashchange", () => { const h = location.hash.slice(1); if (VIEWS_VALIDAS.includes(h)) showView(h); });
 carregar();
 setInterval(carregar, 30000);
 </script>

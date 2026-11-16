@@ -157,6 +157,29 @@ tbody tr:hover { background: #f8fbfd; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 .btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
+/* Botão de ação em ícone (tabelas/modais): alvo de toque consistente */
+.btn.icon { padding: 7px 9px; min-width: 34px; line-height: 1; }
+.btn.sm.icon { padding: 5px 8px; min-width: 30px; }
+/* Variante perigo: ações destrutivas (remover/excluir) */
+.btn.danger { color: var(--bad); }
+.btn.danger:hover { background: var(--bad-soft); border-color: #fca5a5; color: #b91c1c; }
+
+/* Tabela com rolagem horizontal (evita cortar colunas em telas estreitas) */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll table { min-width: 640px; }
+
+/* Toasts (feedback transitório, canto inferior direito) */
+.toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 80; }
+.toast {
+  background: var(--ink); color: #fff; padding: 11px 15px; border-radius: 10px;
+  font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; gap: 9px; max-width: 340px;
+  animation: toastIn .18s ease-out;
+}
+.toast.ok { background: #065f46; } .toast.bad { background: #991b1b; }
+@keyframes toastIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } .card:hover { transform: none; } }
+
 .banner { padding: 13px 16px; border-radius: var(--radius-sm); font-size: 14px; margin-bottom: 18px; line-height: 1.5; }
 .banner.warn { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
 .banner.info { background: var(--brand-soft); border: 1px solid var(--brand-soft-2); color: var(--brand-ink); }
