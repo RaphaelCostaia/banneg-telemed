@@ -116,7 +116,10 @@
       <section class="view" data-view="disparo" hidden>
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
           <p class="sub" id="disparoResumo" style="margin:0">Status do disparo de prospecção, atualizado automaticamente pelo robô.</p>
-          <button class="btn sm" onclick="carregarDisparo()" style="margin-left:auto">↻ Atualizar</button>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <button class="btn sm btn-autodisparo" onclick="toggleAutoDisparo()" title="Pausar/retomar atualização automática">⏸ Pausar</button>
+            <button class="btn sm" onclick="carregarDisparo()">↻ Atualizar</button>
+          </div>
         </div>
         <div class="cards" id="disparoCards" style="margin-bottom:18px"></div>
         <div class="panel" style="padding:18px" id="disparoBox"><p class="muted" style="margin:0">Carregando…</p></div>
@@ -395,12 +398,12 @@ async function salvarCampanha(id) {
 }
 
 // ===== Detalhe da campanha (contatos: ver / filtrar / adicionar / remover / resetar) =====
-let CAMP_ID = null, CAMP_STATUS = "";
+let CAMP_ID = null, CAMP_STATUS = "", modalCampAberto = false;
 const DISP_BADGE = { nao_enviado:["gray","Não enviado"], processando:["amber","Processando"], enviado:["green","Enviado"], falha:["red","Falha"], optout:["gray","Opt-out"] };
 const fmtDataHora = (s) => { if (!s) return "—"; const [d,t] = String(s).replace("T"," ").split(" "); const [y,mo,da] = d.split("-"); const hm = (t||"").slice(0,5); return (da&&mo&&y) ? `${da}/${mo} ${hm}` : "—"; };
 
 async function abrirCampanha(id, status = "") {
-  CAMP_ID = id; CAMP_STATUS = status;
+  CAMP_ID = id; CAMP_STATUS = status; modalCampAberto = true;
   const q = status ? `?status=${encodeURIComponent(status)}` : "";
   const d = await api(`/api/campanhas/${id}/contatos${q}`);
   if (!d || d.erro) { alert(d?.erro || "Erro ao abrir a campanha."); return; }
@@ -441,8 +444,12 @@ async function abrirCampanha(id, status = "") {
         <tbody>${linhas}</tbody>
       </table>
     </div>
-    <div style="margin-top:16px;display:flex;justify-content:flex-end">
-      <button class="btn" onclick="fecharModal()">Fechar</button>
+    <div style="margin-top:16px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span class="muted" style="font-size:12px">↻ Atualiza sozinho a cada 20s</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn sm btn-autodisparo" onclick="toggleAutoDisparo()">${autoDisparo ? "⏸ Pausar" : "▶ Retomar"}</button>
+        <button class="btn" onclick="fecharModal()">Fechar</button>
+      </div>
     </div>`;
   document.getElementById("modalBg").classList.add("show");
 }
@@ -849,7 +856,26 @@ async function copiarLink(inputId, btn) {
   const t = btn.textContent; btn.textContent = "Copiado ✓"; btn.disabled = true;
   setTimeout(() => { btn.textContent = t; btn.disabled = false; }, 1500);
 }
-function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modalBox").style.maxWidth = ""; }
+function fecharModal(){ document.getElementById("modalBg").classList.remove("show"); document.getElementById("modalBox").style.maxWidth = ""; modalCampAberto = false; }
+
+// ===== Auto-refresh (~20s) do painel Disparo e da tela de detalhe da campanha =====
+let autoDisparo = true;
+function toggleAutoDisparo(){
+  autoDisparo = !autoDisparo;
+  document.querySelectorAll(".btn-autodisparo").forEach((b) => { b.textContent = autoDisparo ? "⏸ Pausar" : "▶ Retomar"; });
+}
+setInterval(() => {
+  if (!autoDisparo || document.hidden) return;
+  const disparoView = document.querySelector('.view[data-view="disparo"]');
+  if (disparoView && !disparoView.hidden) carregarDisparo();
+  if (modalCampAberto && document.getElementById("modalBg").classList.contains("show")) {
+    // não re-renderiza enquanto o usuário digita um contato novo (preservar o que foi digitado)
+    const ae = document.activeElement;
+    const tel = document.getElementById("addTel"), nome = document.getElementById("addNome");
+    const digitando = ae === tel || ae === nome || (tel && tel.value) || (nome && nome.value);
+    if (!digitando) abrirCampanha(CAMP_ID, CAMP_STATUS);
+  }
+}, 20000);
 document.getElementById("modalBg").addEventListener("click", e => { if (e.target.id==="modalBg") fecharModal(); });
 
 // abre a view da âncora (ex.: #inad) ou a visão geral
