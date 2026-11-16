@@ -417,7 +417,7 @@ async function abrirCampanha(id, status = "") {
   CAMP_ID = id; CAMP_STATUS = status; modalCampAberto = true;
   const q = status ? `?status=${encodeURIComponent(status)}` : "";
   const d = await api(`/api/campanhas/${id}/contatos${q}`);
-  if (!d || d.erro) { alert(d?.erro || "Erro ao abrir a campanha."); return; }
+  if (!d || d.erro) { toast(d?.erro || "Erro ao abrir a campanha.", "bad"); return; }
   const r = d.resumo;
   const chips = [["","Todos",r.total],["nao_enviado","Não enviado",r.nao_enviado],["processando","Processando",r.processando],["enviado","Enviado",r.enviado],["falha","Falha",r.falha],["optout","Opt-out",r.optout]];
   const chipsHtml = chips.map(([s,lbl,n]) => {
@@ -427,7 +427,7 @@ async function abrirCampanha(id, status = "") {
   const linhas = d.contatos.length ? d.contatos.map((c) => `
     <tr>
       <td>${c.nome ? escHtml(c.nome) : '<span class="muted">—</span>'}</td>
-      <td class="mono">${escHtml(c.telefone)}</td>
+      <td class="mono" title="${escHtml(c.telefone)}">${escHtml(fmtTel(c.telefone))}</td>
       <td>${badge(DISP_BADGE, c.status)}</td>
       <td class="mono" style="font-size:12px">${fmtDataHora(c.enviado_em)}</td>
       <td class="mono" style="font-size:12px">${fmtDataHora(c.respondeu_em)}</td>
@@ -464,15 +464,27 @@ async function abrirCampanha(id, status = "") {
     </div>`;
   document.getElementById("modalBg").classList.add("show");
 }
-// Feedback transitório (não bloqueia como o alert)
+// Feedback transitório (não bloqueia como o alert). Duração cresce com o texto; clique fecha.
 function toast(msg, tipo = "") {
   const box = document.getElementById("toasts");
-  if (!box) return;
+  if (!box) { alert(msg); return; } // fallback defensivo
   const el = document.createElement("div");
   el.className = "toast" + (tipo ? " " + tipo : "");
   el.textContent = msg;
+  el.title = "Clique para fechar";
+  el.onclick = () => el.remove();
   box.appendChild(el);
-  setTimeout(() => { el.style.transition = "opacity .25s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 250); }, 2600);
+  const dur = Math.min(7000, 2600 + String(msg).length * 35);
+  setTimeout(() => { el.style.transition = "opacity .25s"; el.style.opacity = "0"; setTimeout(() => el.remove(), 250); }, dur);
+}
+
+// Formata telefone BR para leitura: "5511977770005" -> "(11) 97777-0005" (número cru fica no title).
+function fmtTel(raw) {
+  let n = String(raw || "").replace(/\D/g, "");
+  if (n.startsWith("55") && (n.length === 12 || n.length === 13)) n = n.slice(2);
+  if (n.length === 11) return `(${n.slice(0, 2)}) ${n.slice(2, 7)}-${n.slice(7)}`;
+  if (n.length === 10) return `(${n.slice(0, 2)}) ${n.slice(2, 6)}-${n.slice(6)}`;
+  return raw || "—";
 }
 
 async function addContato(btn) {
@@ -603,8 +615,8 @@ async function sincronizar() {
     const msg = r.acoes?.length ? `${r.acoes.length} ação(ões): ` + r.acoes.map(a=>a.acao).join(", ") : "nenhuma novidade";
     await carregar();
     btn.textContent = "Sincronizar agora"; btn.disabled = false;
-    alert(`Sincronização concluída — ${r.assinaturas} assinatura(s), ${r.cobrancasVistas} cobrança(s). ${msg}.`);
-  } catch (e) { alert("Falha ao sincronizar: " + e.message); btn.textContent = "Sincronizar agora"; btn.disabled = false; }
+    toast(`Sincronização concluída — ${r.assinaturas} assinatura(s), ${r.cobrancasVistas} cobrança(s). ${msg}.`, "ok");
+  } catch (e) { toast("Falha ao sincronizar: " + e.message, "bad"); btn.textContent = "Sincronizar agora"; btn.disabled = false; }
 }
 
 function periodoMes() {
@@ -770,14 +782,14 @@ function renderCobrancas(rows) {
 async function liberar(id, btn) {
   btn.disabled = true; btn.textContent = "Liberando…";
   try { const r = await api(`/api/vendas/${id}/liberar`, { method:"POST" }); if (r.erro) throw new Error(r.erro); await carregar(); }
-  catch (e) { alert("Falha na liberação: " + e.message); btn.disabled=false; btn.textContent="Repetir"; }
+  catch (e) { toast("Falha na liberação: " + e.message, "bad"); btn.disabled=false; btn.textContent="Repetir"; }
 }
 
 async function desbloquear(id, btn) {
   if (!confirm("Desbloquear este beneficiário no portal? Use quando o pagamento foi regularizado.")) return;
   btn.disabled = true; btn.textContent = "Desbloqueando…";
   try { const r = await api(`/api/vendas/${id}/desbloquear`, { method:"POST" }); if (r.erro) throw new Error(r.erro); await carregar(); }
-  catch (e) { alert("Falha ao desbloquear: " + e.message); btn.disabled=false; btn.textContent="Desbloquear"; }
+  catch (e) { toast("Falha ao desbloquear: " + e.message, "bad"); btn.disabled=false; btn.textContent="Desbloquear"; }
 }
 
 async function reenviarWebhook(id, btn) {
@@ -786,8 +798,8 @@ async function reenviarWebhook(id, btn) {
   try {
     const r = await api(`/api/vendas/${id}/reenviar-webhook`, { method:"POST" });
     if (r.erro) throw new Error(r.erro);
-    alert(r.entregue ? "Webhook reenviado com sucesso ao N8N." : "O N8N não confirmou o recebimento (verifique URL/token do N8N).");
-  } catch (e) { alert("Falha ao reenviar: " + e.message); }
+    toast(r.entregue ? "Webhook reenviado com sucesso ao N8N." : "O N8N não confirmou o recebimento (verifique URL/token do N8N).", r.entregue ? "ok" : "bad");
+  } catch (e) { toast("Falha ao reenviar: " + e.message, "bad"); }
   finally { btn.disabled = false; btn.textContent = txt; }
 }
 
@@ -798,9 +810,9 @@ async function excluirVenda(id, nome) {
   try {
     const r = await api(`/api/vendas/${id}/excluir`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ motivo }) });
     if (r.erro) throw new Error(r.erro);
-    alert(r.assinatura_cancelada ? "Venda excluída. Assinatura no Asaas cancelada." : "Venda excluída.");
+    toast(r.assinatura_cancelada ? "Venda excluída. Assinatura no Asaas cancelada." : "Venda excluída.", "ok");
     await carregar();
-  } catch (e) { alert("Falha ao excluir: " + e.message); }
+  } catch (e) { toast("Falha ao excluir: " + e.message, "bad"); }
 }
 
 function abrirBloqueio(id) {
@@ -828,7 +840,7 @@ async function confirmarBloqueio(id, btn) {
     if (cancelar) { const r = await api(`/api/vendas/${id}/cancelar`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ bloquear:true, motivo }) }); if (r.erro) throw new Error(r.erro); }
     else { const r = await api(`/api/vendas/${id}/bloquear`, { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({ motivo }) }); if (r.erro) throw new Error(r.erro); }
     fecharModal(); await carregar();
-  } catch (e) { alert("Falha: " + e.message); btn.disabled=false; btn.textContent="Confirmar bloqueio"; }
+  } catch (e) { toast("Falha: " + e.message, "bad"); btn.disabled=false; btn.textContent="Confirmar bloqueio"; }
 }
 
 async function detalhe(id) {
